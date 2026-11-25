@@ -1,0 +1,7 @@
+build/
+*.elf
+*.dol
+*.map
+tools/host/cubexp_host
+tools/host/sd/
+*.ppm

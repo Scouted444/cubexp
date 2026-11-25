@@ -20,6 +20,7 @@ void plat_init(void);
 void plat_present(void);           /* push fb[] to the TV and wait for vblank */
 void plat_poll(PadState pads[4]);
 uint64_t plat_ms(void);
+uint64_t plat_us(void);
 /* audio buffers must come from plat_audio_alloc and be finished with plat_audio_ready;
    they are played in place, so keep them alive */
 int16_t *plat_audio_alloc(int samples);

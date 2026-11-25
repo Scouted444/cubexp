@@ -520,7 +520,7 @@ void vfs_init(void) {
         add_text(vfs_system, "motd.txt", "Welcome to the CubeXP terminal. Type 'help' to see what you can do.\n");
         add_text(vfs_system, "autorun.sh", "# Commands here run every time a terminal opens.\n");
         sample_picture(vfs_pics);
-        static const int sc[] = { APP_TERMINAL, APP_NOTEPAD, APP_PAINT, APP_SOLITAIRE, APP_BLOCKS, APP_MUSIC, APP_MINES, APP_CONTROL };
+        static const int sc[] = { APP_TERMINAL, APP_LINUX, APP_NOTEPAD, APP_PAINT, APP_SOLITAIRE, APP_BLOCKS, APP_MUSIC, APP_MINES, APP_CONTROL };
         for (unsigned i = 0; i < sizeof sc / sizeof sc[0]; i++) add_shortcut(vfs_desktop, sc[i]);
     }
     vfs_changes = 1;

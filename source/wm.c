@@ -8,6 +8,7 @@ int zorder[MAX_WIN], nz;
 Window *focus;
 
 static int cascade = 0;
+static void ghost_add(Window *w);
 
 static int widx(Window *w) { return (int)(w - wins); }
 
@@ -60,6 +61,7 @@ static Window *top_window(void) {
 
 void win_close(Window *w) {
     if (!w || !w->used) return;
+    ghost_add(w);
     if (w->on_close) w->on_close(w);
     if (w->data) free(w->data);
     w->data = NULL;
@@ -77,6 +79,50 @@ void win_focus(Window *w) {
     if (!w->nofocus) focus = w;
 }
 
+/* closing windows shrink and fade out ("ghosts" snapshotted from the last frame) */
+typedef struct { uint32_t *px; int x, y, w, h; uint64_t t; } Ghost;
+static Ghost ghosts[3];
+static int no_ghost;
+void shell_hide_cursor_in_fb(void);
+static void ghost_add(Window *w) {
+    if (no_ghost || w->minimized) return;
+    int x = w->x < 0 ? 0 : w->x, y = w->y < 0 ? 0 : w->y;
+    int ww = (w->x + w->w > SW ? SW : w->x + w->w) - x, hh = (w->y + w->h > SH - TASKBAR_H ? SH - TASKBAR_H : w->y + w->h) - y;
+    if (ww <= 8 || hh <= 8) return;
+    int slot = 0;
+    for (int i = 0; i < 3; i++) if (!ghosts[i].px) { slot = i; break; }
+    free(ghosts[slot].px);
+    ghosts[slot].px = malloc(sizeof(uint32_t) * ww * hh);
+    if (!ghosts[slot].px) return;
+    shell_hide_cursor_in_fb();
+    for (int j = 0; j < hh; j++) memcpy(&ghosts[slot].px[j * ww], &fb[(y + j) * SW + x], ww * 4);
+    ghosts[slot].x = x; ghosts[slot].y = y; ghosts[slot].w = ww; ghosts[slot].h = hh; ghosts[slot].t = now_ms;
+}
+static void draw_ghosts(void) {
+    for (int i = 0; i < 3; i++) {
+        Ghost *g = &ghosts[i];
+        if (!g->px) continue;
+        int el = (int)(now_ms - g->t);
+        if (el >= 170) { free(g->px); g->px = NULL; continue; }
+        int p = el * 256 / 170;                       /* 0..256 */
+        int sc = 256 - p * 24 / 256;                  /* shrink to ~91% */
+        int a = (256 - p) * 230 / 256;
+        int dw = g->w * sc / 256, dh = g->h * sc / 256;
+        int ox = g->x + (g->w - dw) / 2, oy = g->y + (g->h - dh) / 2 + p * 6 / 256;
+        for (int j = 0; j < dh; j++) {
+            int py = oy + j;
+            if (py < 0 || py >= SH) continue;
+            const uint32_t *row = &g->px[(j * 256 / sc) * g->w];
+            uint32_t *d = &fb[py * SW];
+            for (int k = 0; k < dw; k++) {
+                int px = ox + k;
+                if (px < 0 || px >= SW) continue;
+                d[px] = mix(d[px], row[k * 256 / sc], a);
+            }
+        }
+    }
+}
+
 /* "zoom rectangle" animations (minimize to the taskbar) */
 typedef struct { int x0, y0, w0, h0, x1, y1, w1, h1; uint64_t t; } ZoomAnim;
 static ZoomAnim zooms[4];
@@ -87,6 +133,7 @@ static void zoom_add(int x0, int y0, int w0, int h0, int x1, int y1, int w1, int
     }
 }
 void wm_draw_zooms(void) {
+    draw_ghosts();
     for (int i = 0; i < 4; i++) {
         ZoomAnim *z = &zooms[i];
         if (!z->t) continue;
@@ -113,9 +160,11 @@ void win_toggle_max(Window *w) {
     if (w->no_max) return;
     if (w->maximized) {
         w->maximized = 0;
+        zoom_add(0, 0, SW, SH - TASKBAR_H, w->rx, w->ry, w->rw, w->rh);
         w->x = w->rx; w->y = w->ry; w->w = w->rw; w->h = w->rh;
     } else {
         w->rx = w->x; w->ry = w->y; w->rw = w->w; w->rh = w->h;
+        zoom_add(w->x, w->y, w->w, w->h, 0, 0, SW, SH - TASKBAR_H);
         w->maximized = 1;
         w->x = -BORDER; w->y = 0; w->w = SW + 2 * BORDER; w->h = SH - TASKBAR_H + BORDER;
     }
@@ -376,8 +425,10 @@ void wm_tick(void) {
 }
 
 void wm_close_all(void) {
+    no_ghost = 1;
     for (int i = 0; i < MAX_WIN; i++) if (wins[i].used) win_close(&wins[i]);
     nz = 0; focus = NULL; cascade = 0;
+    no_ghost = 0;
 }
 
 int wm_dragging(void) { return drag_win >= 0; }

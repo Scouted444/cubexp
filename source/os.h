@@ -112,7 +112,7 @@ enum {
     APP_COMPUTER, APP_NOTEPAD, APP_CALC, APP_PAINT, APP_MINES, APP_CMD, APP_CONTROL,
     APP_TASKMGR, APP_SNAKE, APP_CLOCK, APP_RECYCLE, APP_ABOUT, APP_HELP, APP_OSK,
     APP_RUN, APP_MSGBOX, APP_PONG, APP_TERMINAL, APP_EXPLORER, APP_SOLITAIRE, APP_BLOCKS,
-    APP_VIEWER, APP_MUSIC, APP_STICKY, APP_COUNT
+    APP_VIEWER, APP_MUSIC, APP_STICKY, APP_LINUX, APP_COUNT
 };
 typedef struct { const char *name, *cmd; int icon; void (*open)(void); const char *desc; } AppInfo;
 extern const AppInfo apps[APP_COUNT];
@@ -124,7 +124,7 @@ void open_mines(void); void open_cmd(void); void open_control(void); void open_t
 void open_snake(void); void open_clock(void); void open_recycle(void); void open_about(void);
 void open_help(void); void open_osk(void); void open_run(void); void open_pong(void);
 void open_terminal(void); void open_explorer(void); void open_solitaire(void); void open_blocks(void);
-void open_viewer(void); void open_music(void); void open_sticky(void);
+void open_viewer(void); void open_music(void); void open_sticky(void); void open_linux(void);
 void terminal_run(const char *cmdline);
 void explorer_open_path(const char *path);
 void viewer_open_file(const char *path);

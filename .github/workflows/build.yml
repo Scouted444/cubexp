@@ -15,6 +15,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Fetch the Linux kernel image (for the Linux Terminal)
+        run: |
+          (command -v curl || command -v wget) >/dev/null || (apt-get update && apt-get install -y curl)
+          (command -v unzip || command -v python3) >/dev/null || (apt-get update && apt-get install -y unzip)
+          sh tools/fetch_linux.sh
+
       - name: Build cubexp.dol
         run: make -j"$(nproc)"
 

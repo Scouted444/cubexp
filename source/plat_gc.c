@@ -115,6 +115,7 @@ void plat_poll(PadState p[4]) {
 }
 
 uint64_t plat_ms(void) { return ticks_to_millisecs(gettime()); }
+uint64_t plat_us(void) { return ticks_to_microsecs(gettime()); }
 
 int16_t *plat_audio_alloc(int samples) {
     int n = (samples + 15) & ~15;

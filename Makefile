@@ -11,7 +11,7 @@ include $(DEVKITPPC)/gamecube_rules
 TARGET   := cubexp
 BUILD    := build
 SOURCES  := source source/apps
-DATA     :=
+DATA     := data
 INCLUDES := source
 
 CFLAGS   = -g -O2 -Wall -Wno-format-truncation $(MACHDEP) $(INCLUDE)
@@ -31,7 +31,7 @@ CFILES   := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
 CPPFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
 sFILES   := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
 SFILES   := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.S)))
-BINFILES :=
+BINFILES := $(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.bin)))
 
 export LD := $(CC)
 export OFILES := $(addsuffix .o,$(BINFILES)) $(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(sFILES:.s=.o) $(SFILES:.S=.o)
@@ -40,7 +40,11 @@ export INCLUDE := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
                   -I$(CURDIR)/$(BUILD) -I$(LIBOGC_INC)
 export LIBPATHS := -L$(LIBOGC_LIB) $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 
-.PHONY: $(BUILD) clean run
+.PHONY: $(BUILD) clean run linux-image
+
+# downloads the prebuilt RISC-V Linux kernel (with BusyBox) used by the Linux Terminal
+linux-image:
+	sh tools/fetch_linux.sh
 
 $(BUILD):
 	@[ -d $@ ] || mkdir -p $@
@@ -58,6 +62,10 @@ else
 DEPENDS := $(OFILES:.o=.d)
 
 $(OUTPUT).dol: $(OUTPUT).elf
+
+%.bin.o %_bin.h : %.bin
+	@echo $(notdir $<)
+	@$(bin2o)
 $(OUTPUT).elf: $(OFILES)
 
 -include $(DEPENDS)

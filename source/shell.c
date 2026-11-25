@@ -16,6 +16,8 @@ int  wm_dragging(void);
 Window *wm_hit(int mx, int my);
 
 int mouse_x = 320, mouse_y = 240, mouse_btn;
+static void draw_pointer(int busy);
+void shell_hide_cursor_in_fb(void);
 uint64_t now_ms;
 int fps;
 PadState pads[4];
@@ -58,6 +60,7 @@ const AppInfo apps[APP_COUNT] = {
     { "Picture Viewer", "viewer", IC_VIEWER, open_viewer, "Look at your pictures" },
     { "Music Maker", "music", IC_MUSIC, open_music, "Compose tunes" },
     { "Sticky Notes", "sticky", IC_STICKY, open_sticky, "Notes on your desktop" },
+    { "Linux Terminal", "linux", IC_LINUX, open_linux, "Real Linux in a RISC-V emulator" },
 };
 
 void app_launch(int app) {
@@ -322,11 +325,11 @@ static void set_start(int open) { start_open = open; allprog_open = 0; if (open)
 
 /* All Programs, in two columns */
 static const int allprog_list[] = {
-    APP_EXPLORER, APP_TERMINAL, APP_CMD, APP_NOTEPAD, APP_PAINT, APP_CALC, APP_VIEWER, APP_MUSIC, APP_STICKY, APP_OSK, APP_CLOCK, APP_RUN,
+    APP_EXPLORER, APP_TERMINAL, APP_LINUX, APP_CMD, APP_NOTEPAD, APP_PAINT, APP_CALC, APP_VIEWER, APP_MUSIC, APP_STICKY, APP_OSK, APP_CLOCK, APP_RUN,
     APP_SOLITAIRE, APP_MINES, APP_BLOCKS, APP_SNAKE, APP_PONG, APP_COMPUTER, APP_CONTROL, APP_TASKMGR, APP_RECYCLE, APP_HELP, APP_ABOUT,
 };
 #define NALLPROG ((int)(sizeof allprog_list / sizeof allprog_list[0]))
-#define AP_ROWS 12
+#define AP_ROWS 13
 
 static void build_start(void) {
     nsi = 0;
@@ -1100,7 +1103,7 @@ static int shell_busy(void) {
     return 0;
 }
 
-void shell_frame(void) {
+static void shell_frame_inner(void) {
     plat_poll(pads);
     PadState p;
     merged_pad(&p);
@@ -1116,7 +1119,7 @@ void shell_frame(void) {
     case ST_LOGIN:
         move_cursor(&p);
         if (p.down & B_A) login_click(mouse_x, mouse_y);
-        if (state == ST_LOGIN) { draw_login(); draw_cursor(mouse_x, mouse_y, 0); }
+        if (state == ST_LOGIN) { draw_login(); draw_pointer(0); }
         return;
     case ST_WELCOME:
         draw_welcome();
@@ -1172,7 +1175,49 @@ void shell_frame(void) {
         draw_tooltip();
     } else tip_want[0] = 0;
     draw_dialog();
-    draw_cursor(mouse_x, mouse_y, shell_busy());
+    draw_pointer(shell_busy());
+}
+
+/* ---------------- screen crossfades between boot / login / welcome / desktop ---------------- */
+static uint32_t *xf_buf;
+static uint64_t xf_t;
+static int xf_prev_state = -1;
+void shell_frame(void) {
+    int before = state;
+    shell_frame_inner();
+    if (xf_prev_state >= 0 && before != state) {
+        /* state changed during this frame: fb still shows the old screen; keep it to fade from */
+        if (!xf_buf) xf_buf = malloc(sizeof(uint32_t) * SW * SH);
+        if (xf_buf) { shell_hide_cursor_in_fb(); memcpy(xf_buf, fb, sizeof(uint32_t) * SW * SH); xf_t = now_ms; }
+    }
+    xf_prev_state = state;
+    if (xf_buf) {
+        int el = (int)(now_ms - xf_t);
+        if (el >= 380 || (state == ST_DESKTOP && saver_on)) { free(xf_buf); xf_buf = NULL; return; }
+        int a = 256 - el * 256 / 380;
+        a = a * a / 256;   /* ease out */
+        for (int i = 0; i < SW * SH; i++) fb[i] = mix(fb[i], xf_buf[i], a);
+        if (state == ST_DESKTOP || state == ST_LOGIN) draw_cursor(mouse_x, mouse_y, 0);
+    }
+}
+
+/* the pixels under the pointer, so a snapshot of the last frame can be taken without it */
+static uint32_t cur_save[24 * 24];
+static int cur_sx = -1, cur_sy;
+static void draw_pointer(int busy) {
+    cur_sx = mouse_x; cur_sy = mouse_y;
+    for (int j = 0; j < 24; j++)
+        for (int i = 0; i < 24; i++) cur_save[j * 24 + i] = pget(mouse_x + i, mouse_y + j);
+    draw_cursor(mouse_x, mouse_y, busy);
+}
+void shell_hide_cursor_in_fb(void) {
+    if (cur_sx < 0) return;
+    for (int j = 0; j < 24; j++)
+        for (int i = 0; i < 24; i++) {
+            int x = cur_sx + i, y = cur_sy + j;
+            if (x >= 0 && y >= 0 && x < SW && y < SH) fb[y * SW + x] = cur_save[j * 24 + i];
+        }
+    cur_sx = -1;
 }
 
 #ifdef HOST_BUILD

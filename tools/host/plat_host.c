@@ -49,6 +49,20 @@ void plat_present(void) {
         if (!strcmp(cmd, "shot")) shot(a);
         if (!strcmp(cmd, "quit")) exit(0);
         if (!strcmp(cmd, "launch")) app_launch(atoi(a));
+        if (!strcmp(cmd, "vtdemo")) {
+            extern void linux_debug_feed(const char *s);
+            linux_debug_feed(
+                "[    0.000000] Linux version 6.8.0-rc1 (cnlohr@cnlohr-1520) (riscv32-buildroot-linux-uclibc-gcc) #1\r\n"
+                "[    0.000000] Machine model: riscv-minimal-nommu,qemu\r\n"
+                "[    0.400000] Run /init as init process\r\n\r\nWelcome to Buildroot\r\n"
+                "\x1b[1;32m~ #\x1b[0m ls --color /\r\n"
+                "\x1b[1;34mbin\x1b[0m   \x1b[1;34mdev\x1b[0m   \x1b[1;34metc\x1b[0m   \x1b[1;36minit\x1b[0m  \x1b[1;34mlib\x1b[0m   \x1b[1;34mproc\x1b[0m  \x1b[1;34mroot\x1b[0m  \x1b[1;34msbin\x1b[0m  \x1b[1;34msys\x1b[0m   \x1b[1;34mtmp\x1b[0m   \x1b[1;34musr\x1b[0m\r\n"
+                "\x1b[1;32m~ #\x1b[0m uname -a\r\nLinux buildroot 6.8.0-rc1 #1 Mon Jan 22 riscv32 GNU/Linux\r\n"
+                "\x1b[1;32m~ #\x1b[0m cat /proc/cpuinfo | head -3\r\nprocessor\t: 0\r\nhart\t\t: 0\r\nisa\t\t: rv32ima\r\n"
+                "\x1b[7m reverse \x1b[0m \x1b[41;37m red bg \x1b[0m \x1b[4munderline\x1b[0m \x1b[93mbright yellow\x1b[0m\r\n"
+                "\x1b[1;32m~ #\x1b[0m top\x1b[s\x1b[20;50H\x1b[44;97m positioned box \x1b[0m\x1b[u\r\n"
+                "\x1b[1;32m~ #\x1b[0m echo hi\b\b\x1b[K\x1b[1;35mHI\x1b[0m");
+        }
         if (!strcmp(cmd, "closeall")) { extern void wm_close_all(void); wm_close_all(); }
     }
     exit(0);
@@ -60,6 +74,7 @@ void plat_poll(PadState p[4]) {
     prev = held;
 }
 uint64_t plat_ms(void) { return (uint64_t)frame * 17; }
+uint64_t plat_us(void) { static uint64_t t; return (uint64_t)frame * 17000 + (t += 50); }
 int16_t *plat_audio_alloc(int samples) { return calloc((samples + 15) & ~15, 2); }
 void plat_audio_ready(int16_t *pcm, int samples) { (void)pcm; (void)samples; }
 void plat_play(const int16_t *pcm, int n, int r, int v) { (void)pcm; (void)n; (void)r; (void)v; }

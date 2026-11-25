@@ -42,295 +42,477 @@ static void TRI(float ax, float ay, float bx, float by, float cx, float cy, uint
         }
 }
 
+/* ---- extra drawing helpers ---- */
+static void E(float cx, float cy, float rx, float ry, uint32_t c) {   /* filled ellipse */
+    int x0 = X0 + S(cx - rx), x1 = X0 + S(cx + rx), y0 = Y0 + S(cy - ry), y1 = Y0 + S(cy + ry);
+    float fcx = X0 + cx * SZ / 32, fcy = Y0 + cy * SZ / 32, frx = rx * SZ / 32, fry = ry * SZ / 32;
+    for (int y = y0; y <= y1; y++)
+        for (int x = x0; x <= x1; x++) {
+            float dx = (x + 0.5f - fcx) / frx, dy = (y + 0.5f - fcy) / fry;
+            if (dx * dx + dy * dy <= 1) pset(x, y, c);
+        }
+}
+static void EG(float cx, float cy, float rx, float ry, uint32_t a, uint32_t b) {   /* ellipse, vertical gradient */
+    int y0 = Y0 + S(cy - ry), y1 = Y0 + S(cy + ry), x0 = X0 + S(cx - rx), x1 = X0 + S(cx + rx);
+    float fcx = X0 + cx * SZ / 32, fcy = Y0 + cy * SZ / 32, frx = rx * SZ / 32, fry = ry * SZ / 32;
+    for (int y = y0; y <= y1; y++) {
+        uint32_t c = mix(a, b, y1 > y0 ? (y - y0) * 256 / (y1 - y0) : 0);
+        for (int x = x0; x <= x1; x++) {
+            float dx = (x + 0.5f - fcx) / frx, dy = (y + 0.5f - fcy) / fry;
+            if (dx * dx + dy * dy <= 1) pset(x, y, c);
+        }
+    }
+}
+/* white highlight fading downwards (gloss) */
+static void GLOSS(float x, float y, float w, float h, int a) {
+    int ax = X0 + S(x), ay = Y0 + S(y), aw = S(x + w) - S(x), ah = S(y + h) - S(y);
+    for (int j = 0; j < ah; j++) fill_a(ax, ay + j, aw, 1, 0xFFFFFF, a * (ah - j) / ah);
+}
+static void QUAD(float ax, float ay, float bx, float by, float cx, float cy, float dx, float dy, uint32_t c) {
+    TRI(ax, ay, bx, by, cx, cy, c); TRI(ax, ay, cx, cy, dx, dy, c);
+}
+/* rounded box with outline, vertical gradient and gloss: the basic XP "tile" */
+static void TILE(float x, float y, float w, float h, float r, uint32_t edge, uint32_t c1, uint32_t c2, int gloss) {
+    RF(x, y, w, h, r, edge);
+    RG(x + 1, y + 1, w - 2, h - 2, r - 0.5f, c1, c2);
+    if (gloss) GLOSS(x + 1.5f, y + 1.2f, w - 3, h * 0.42f, gloss);
+}
+static void ARC(float cx, float cy, float r, float a0, float a1, float t, uint32_t c);
+
 /* ---- reusable parts ---- */
 static void monitor(uint32_t s1, uint32_t s2) {
-    RF(2, 3, 28, 20, 2.5f, 0x4A4A44);
-    GV(3, 4, 26, 18, 0xF4F2EA, 0xC8C4B0);
-    GV(5.5f, 6, 21, 13, s1, s2);
-    F(5.5f, 6, 21, 1, 0xFFFFFF);
-    GV(12, 23, 8, 3, 0xB0AC98, 0x8C8874);
-    RG(6, 26, 20, 4, 1.5f, 0xF0EDE2, 0xA8A490);
-    R(6, 26, 20, 4, 0x7A7866);
+    QUAD(11, 26, 21, 26, 23, 29.5f, 9, 29.5f, 0x6E6C62);          /* foot */
+    QUAD(11.5f, 26, 20.5f, 26, 22, 28.6f, 10, 28.6f, 0xC8C5B6);
+    GV(13.5f, 22, 5, 4.5f, 0xA9A694, 0x86836F);                    /* neck */
+    TILE(1.5f, 2, 29, 21.5f, 2.6f, 0x4A483E, 0xF8F7F1, 0xC9C5B0, 0);
+    RF(4, 4.5f, 24, 15, 1, 0x56544A);
+    GV(5, 5.5f, 22, 13, s1, s2);
+    TRI(5, 5.5f, 19, 5.5f, 5, 14, 0xFFFFFF);  /* screen glare (drawn faint below) */
+    GV(5, 5.5f, 22, 13, s1, s2);
+    { int ax = X0 + S(5), ay = Y0 + S(5.5f), aw = S(27) - S(5), ah = S(18.5f) - S(5.5f);
+      for (int j = 0; j < ah; j++) fill_a(ax, ay + j, aw - j * aw / ah / 2 - aw / 3, 1, 0xFFFFFF, 46 - j * 46 / ah); }
+    C(26.5f, 21.3f, 0.7f, 0x4AD040);
 }
 static void folder(uint32_t a, uint32_t b, uint32_t edge) {
-    RF(2, 6, 13, 6, 2, shade(a, 85));
-    RG(2, 9, 28, 19, 2, a, b);
-    R(2, 9, 28, 19, edge);
-    F(3, 10, 26, 1, mix(a, 0xFFFFFF, 140));
+    /* back panel with tab */
+    RF(2, 5, 12, 6, 1.6f, edge);
+    RF(2.6f, 5.6f, 10.8f, 5, 1.2f, shade(a, 88));
+    RF(2, 8, 28, 20, 1.6f, edge);
+    RG(2.6f, 8.6f, 26.8f, 18.8f, 1.2f, shade(a, 92), shade(b, 80));
+    F(4, 10, 23, 1, mix(a, 0xFFFFFF, 120));
+    /* paper peeking out */
+    F(5, 9.5f, 21, 4, 0xFFFFFF); F(5, 13, 21, 0.6f, 0xD8D8D8);
+    /* front flap, slightly skewed for depth */
+    QUAD(3.5f, 12.5f, 31, 12.5f, 29.4f, 28, 2, 28, edge);
+    QUAD(4.2f, 13.2f, 30, 13.2f, 28.6f, 27.3f, 2.8f, 27.3f, a);
+    { int y0 = Y0 + S(13.2f), y1 = Y0 + S(27.3f);
+      for (int y = y0; y < y1; y++) {
+          float t = (float)(y - y0) / (y1 - y0);
+          int xl = X0 + S(4.2f - t * 1.4f), xr = X0 + S(30 - t * 1.4f);
+          hline(xl, y, xr - xl, mix(a, b, (int)(t * 256)));
+      } }
+    QUAD(4.2f, 13.2f, 30, 13.2f, 29.8f, 14.2f, 4.1f, 14.2f, mix(a, 0xFFFFFF, 150));
 }
 static void page(uint32_t corner) {
-    TRI(7, 2, 21, 2, 7, 30, 0xFFFFFF); F(7, 2, 14, 28, 0xFFFFFF);
-    F(7, 9, 19, 21, 0xFFFFFF);
-    TRI(21, 2, 26, 7, 21, 7, corner);
-    TRI(21, 2, 26, 7, 26, 9, 0xFFFFFF);
-    F(21, 7, 5, 2, 0xFFFFFF);
-    TL(7, 2, 21, 2, 0.5f, 0x8A8A8A); TL(21, 2, 26, 7, 0.5f, 0x8A8A8A); TL(26, 7, 26, 30, 0.5f, 0x8A8A8A);
-    TL(26, 30, 7, 30, 0.5f, 0x8A8A8A); TL(7, 30, 7, 2, 0.5f, 0x8A8A8A);
-    TRI(21, 2, 21, 7, 26, 7, corner);
-}
-/* arc from angle a0 to a1 (degrees, 0 = up, clockwise) */
-static void ARC(float cx, float cy, float r, float a0, float a1, float t, uint32_t c) {
-    float px = cx + r * sinf(a0 * 0.0174533f), py = cy - r * cosf(a0 * 0.0174533f);
-    for (float a = a0 + 8; a <= a1 + 0.1f; a += 8) {
-        float nx = cx + r * sinf(a * 0.0174533f), ny = cy - r * cosf(a * 0.0174533f);
-        TL(px, py, nx, ny, t, c);
-        px = nx; py = ny;
-    }
+    (void)corner;
+    QUAD(6, 1.5f, 21.5f, 1.5f, 27, 7, 27, 30.5f, 0x7A7A7A);
+    TRI(6, 1.5f, 27, 30.5f, 6, 30.5f, 0x7A7A7A);
+    QUAD(6.8f, 2.3f, 21, 2.3f, 26.2f, 7.5f, 26.2f, 29.7f, 0xFFFFFF);
+    TRI(6.8f, 2.3f, 26.2f, 29.7f, 6.8f, 29.7f, 0xFFFFFF);
+    GH(6.8f, 8, 19.4f, 21.7f, 0xFFFFFF, 0xE6EAF0);
+    TRI(21, 2.3f, 21, 7.5f, 26.2f, 7.5f, 0xC8CCD4);           /* folded corner */
+    TL(21, 2.3f, 21, 7.5f, 0.3f, 0x9A9A9A); TL(21, 7.5f, 26.2f, 7.5f, 0.3f, 0x9A9A9A);
 }
 static void glyph_i(float cx, float cy, uint32_t c) { C(cx, cy - 7, 2, c); RF(cx - 1.8f, cy - 3, 3.6f, 11, 1, c); }
 static void glyph_ex(float cx, float cy, uint32_t c) { RF(cx - 2, cy - 9, 4, 11, 1.5f, c); C(cx, cy + 5.5f, 2.2f, c); }
+static void sphere(uint32_t edge, uint32_t c1, uint32_t c2) {
+    C(16, 16, 14.5f, edge);
+    EG(16, 16, 13.4f, 13.4f, c1, c2);
+    EG(16, 9.6f, 9.6f, 6, 0xFFFFFF, mix(c1, 0xFFFFFF, 60));
+    EG(16, 9.6f, 9.6f, 6, mix(c1, 0xFFFFFF, 170), mix(c1, c2, 60));
+}
+static void card(float x, float y, float w, float h, int back) {
+    RF(x, y, w, h, 2, 0x5A5A5A);
+    RF(x + 0.7f, y + 0.7f, w - 1.4f, h - 1.4f, 1.6f, 0xFFFFFF);
+    if (back) {
+        RG(x + 2, y + 2, w - 4, h - 4, 1, 0x3A6CD8, 0x163E9E);
+        for (int i = 0; i < 5; i++) TL(x + 2.5f, y + 3 + i * 4, x + w - 2.5f, y + 6 + i * 4, 0.3f, 0x6A9AF0);
+    }
+}
+static void heart(float cx, float cy, float r, uint32_t c) {
+    C(cx - r / 2, cy - r / 4, r / 2 + 0.4f, c); C(cx + r / 2, cy - r / 4, r / 2 + 0.4f, c);
+    TRI(cx - r - 0.2f, cy, cx + r + 0.2f, cy, cx, cy + r + 0.6f, c);
+}
 
 static void icon_raw(int id) {
     switch (id) {
     case IC_COMPUTER:
-        monitor(0x7DB9FF, 0x1A56C8);
-        GV(5.5f, 14, 21, 5, 0x5CB848, 0x2E8A22);
+        monitor(0x7DBDFF, 0x2A62D0);
+        QUAD(5, 14, 27, 12, 27, 18.5f, 5, 18.5f, 0x4CB040);
+        QUAD(5, 15.5f, 27, 13.6f, 27, 14.5f, 5, 16.5f, 0x7ADA60);
         break;
-    case IC_NOTEPAD: case IC_TEXTFILE:
-        if (id == IC_NOTEPAD) {
-            RF(6, 3, 21, 27, 1.5f, 0x5A6A80);
-            GV(7, 4, 19, 25, 0xFFFFFF, 0xEEF2F8);
-            GV(7, 4, 19, 5, 0x8CC0F0, 0x3A7CCC);
-            for (int i = 0; i < 4; i++) C(10 + i * 4.3f, 4, 1.1f, 0x404858);
-            for (int i = 0; i < 5; i++) F(10, 12.5f + i * 3.4f, i == 4 ? 8 : 13, 1.1f, 0x8898B8);
-        } else {
-            page(0xD8D8D8);
-            for (int i = 0; i < 6; i++) F(10, 11 + i * 3, i == 5 ? 8 : 13, 1, 0x7A8AA8);
-        }
+    case IC_NOTEPAD:
+        RF(6.5f, 4, 21, 27, 1.5f, 0x5A6A80);
+        RG(7.3f, 4.8f, 19.4f, 25.4f, 1, 0xFFFFFF, 0xE8EEF6);
+        RG(7.3f, 4.8f, 19.4f, 5, 1, 0x9CCAF4, 0x3A78C8);
+        GLOSS(7.5f, 5, 19, 2.4f, 120);
+        for (int i = 0; i < 5; i++) { RF(9.4f + i * 3.7f, 2, 1.6f, 5.4f, 0.8f, 0x6A7080); F(9.8f + i * 3.7f, 2.6f, 0.6f, 3.6f, 0xD8DCE4); }
+        for (int i = 0; i < 6; i++) F(10, 13 + i * 2.9f, i == 5 ? 8 : 14, 0.9f, 0x8EA0C0);
+        F(9, 11, 0.6f, 18, 0xF0A0A0);
+        break;
+    case IC_TEXTFILE:
+        page(0);
+        for (int i = 0; i < 6; i++) F(9.5f, 11 + i * 3, i == 5 ? 8 : 13.5f, 1, 0x6E82AA);
         break;
     case IC_CALC:
-        RF(6, 2, 20, 28, 3, 0x3E4650);
-        RG(7, 3, 18, 26, 2.5f, 0xE4E8EE, 0xA8B0BC);
-        RG(9, 5, 14, 6, 1, 0xDCF5D0, 0xA8D29A); R(9, 5, 14, 6, 0x5A6E58);
+        TILE(6, 1.5f, 20, 29, 3, 0x2E343C, 0xE8ECF2, 0x9AA2B0, 70);
+        RF(8.4f, 4, 15.2f, 6.6f, 1.2f, 0x4A5A48);
+        RG(9, 4.6f, 14, 5.4f, 0.8f, 0xE4F8D8, 0xA4CE94);
+        F(15, 6, 6, 1.6f, 0x3A4A38); F(19, 8.2f, 2, 0.8f, 0x3A4A38);
         for (int r = 0; r < 4; r++)
-            for (int c = 0; c < 3; c++)
-                RF(9.5f + c * 4.7f, 13.5f + r * 3.8f, 3.6f, 2.8f, 0.8f, (r == 3 && c == 2) ? 0xE86A2A : 0x485260);
+            for (int c = 0; c < 3; c++) {
+                uint32_t k = (r == 3 && c == 2) ? 0xF07A30 : (c == 2 ? 0x5A6A80 : 0x3E4654);
+                float bx = 8.8f + c * 5, by = 12.8f + r * 4.2f;
+                RF(bx, by, 4, 3.2f, 0.8f, shade(k, 70));
+                RG(bx + 0.3f, by + 0.2f, 3.4f, 2.6f, 0.6f, shade(k, 140), k);
+            }
         break;
     case IC_PAINT:
-        C(15, 17, 13, 0x7A5A2E); C(15, 17, 12, 0xF4DEB0);
-        C(21, 23, 3.4f, 0x7A5A2E); C(21, 23, 2.4f, 0xFFFFFF);
-        C(9, 13, 3, 0xE23030); C(15, 9.5f, 3, 0x2A62E6); C(22, 13, 3, 0x2EB044); C(9, 21, 3, 0xF4C418);
-        TL(17, 29, 28, 5, 1.5f, 0x8A5A20); TL(26.5f, 8, 29, 3, 1.4f, 0xC0C0C8); C(28.6f, 3.4f, 1.5f, 0x303030);
+        E(15, 17.5f, 13.5f, 12, 0x7A5A2E);
+        EG(15, 17.2f, 12.5f, 11, 0xFCEACA, 0xE0C48A);
+        C(21.5f, 22.5f, 3.4f, 0x7A5A2E); C(21.5f, 22.5f, 2.5f, 0xFFFFFF);
+        static const uint32_t pc[5] = { 0xE23030, 0x2A62E6, 0x2EB044, 0xF4C418, 0x9A3AC8 };
+        static const float px[5] = { 8, 13.5f, 20, 7.5f, 13 }, py[5] = { 13.5f, 9.5f, 11, 20.5f, 24 };
+        for (int i = 0; i < 5; i++) { C(px[i], py[i], 2.9f, shade(pc[i], 70)); C(px[i], py[i], 2.4f, pc[i]); C(px[i] - 0.8f, py[i] - 0.8f, 0.8f, 0xFFFFFF); }
+        TL(17, 29, 27.5f, 7, 1.5f, 0x7A4A18); TL(17.2f, 28.4f, 27.2f, 7.2f, 0.6f, 0xC08A40);
+        TL(27, 8, 29.2f, 3.6f, 1.6f, 0xB8BCC8); TL(28.8f, 4.4f, 30, 2, 1.2f, 0x2A2A40);
         break;
     case IC_MINES:
-        RG(2, 2, 28, 28, 2, 0xE8E8E8, 0xB4B4B4); R(2, 2, 28, 28, 0x6A6A6A);
-        TL(16, 5, 16, 27, 1, 0x101010); TL(5, 16, 27, 16, 1, 0x101010);
-        TL(8.5f, 8.5f, 23.5f, 23.5f, 1, 0x101010); TL(23.5f, 8.5f, 8.5f, 23.5f, 1, 0x101010);
-        C(16, 16, 8, 0x101010); C(13, 13, 2.2f, 0xFFFFFF);
+        TILE(2, 2, 28, 28, 2.5f, 0x5A5A5A, 0xF2F2F2, 0xB0B0B0, 60);
+        for (int a = 0; a < 8; a++) { float an = a * 0.785398f; TL(16, 16, 16 + 11 * sinf(an), 16 - 11 * cosf(an), 1, 0x141414); }
+        C(16, 16, 8.2f, 0x141414); EG(16, 16, 7.2f, 7.2f, 0x4A4A4A, 0x101010);
+        C(13.2f, 13.2f, 2.4f, 0xFFFFFF); C(12.6f, 12.6f, 1, 0xFFFFFF);
         break;
     case IC_CMD:
-        RF(2, 4, 28, 24, 2, 0x2A2A2A);
-        GH(3, 5, 26, 5, 0x0A50D8, 0x5A96F4);
-        F(3, 10, 26, 17, 0x000000);
-        F(5, 13, 6, 1.5f, 0xC0C0C0); F(12, 13, 4, 1.5f, 0xC0C0C0);
-        F(5, 17, 9, 1.5f, 0xC0C0C0); F(15, 17, 3, 1.5f, 0xFFFFFF);
+        RF(1.5f, 4, 29, 25, 2.2f, 0x18284A);
+        RG(2.3f, 4.8f, 27.4f, 5.6f, 1.6f, 0x5A9AF8, 0x0A4AD0);
+        GLOSS(2.5f, 5, 27, 2.4f, 110);
+        F(2.3f, 10.4f, 27.4f, 17.8f, 0x000000);
+        F(4.5f, 13, 2, 2, 0xD0D0D0); F(7.5f, 13, 7, 2, 0xD0D0D0); F(15.5f, 13, 4, 2, 0xD0D0D0);
+        F(4.5f, 17.5f, 10, 2, 0xD0D0D0); F(15.5f, 17.5f, 3, 2, 0xFFFFFF);
+        F(4.5f, 22, 5, 2, 0x909090);
         break;
     case IC_TERMINAL:
-        RF(2, 4, 28, 24, 3, 0x1E1A2E);
-        GV(3, 5, 26, 22, 0x3A2E5A, 0x1A1428);
-        TL(7, 11, 12, 15, 1.2f, 0x6CF08C); TL(12, 15, 7, 19, 1.2f, 0x6CF08C);
-        F(14, 19, 9, 2, 0xE0E0F0);
-        for (int i = 0; i < 3; i++) C(6 + i * 3, 7, 0.9f, i == 0 ? 0xFF6058 : i == 1 ? 0xFFBD2E : 0x28C940);
+        RF(1.5f, 3.5f, 29, 26, 3.4f, 0x0E0A18);
+        RG(2.3f, 4.3f, 27.4f, 24.4f, 2.8f, 0x3E3266, 0x14101E);
+        GLOSS(2.5f, 4.4f, 27, 5, 50);
+        for (int i = 0; i < 3; i++) { C(5.5f + i * 3.2f, 7.4f, 1.1f, i == 0 ? 0xFF6058 : i == 1 ? 0xFFBD2E : 0x28C940); }
+        TL(7, 12.5f, 12.5f, 16.5f, 1.4f, 0x6CF08C); TL(12.5f, 16.5f, 7, 20.5f, 1.4f, 0x6CF08C);
+        RF(14.5f, 19.5f, 9, 2.3f, 0.6f, 0xE8E8F8);
         break;
     case IC_CONTROL:
-        RG(2, 3, 28, 26, 2.5f, 0xEEF4FF, 0x9EBCEC); R(2, 3, 28, 26, 0x4A6AA8);
+        TILE(1.5f, 3, 29, 26, 3, 0x3A5A98, 0xF2F6FF, 0x9EBCEC, 90);
         for (int a = 0; a < 8; a++) {
             float an = a * 0.785398f;
-            C(16 + 9 * sinf(an), 16 - 9 * cosf(an), 3, 0x5E6E86);
+            C(16 + 9.2f * sinf(an), 16 - 9.2f * cosf(an), 3, 0x4E5E78);
         }
-        C(16, 16, 8.5f, 0x7E8EA6); C(16, 16, 7, 0x9AAAC0); C(16, 16, 3.2f, 0xEEF4FF);
+        C(16, 16, 9, 0x4E5E78);
+        EG(16, 16, 8, 8, 0xC4D0E2, 0x7A8AA4);
+        C(16, 16, 3.8f, 0x4E5E78); C(16, 16, 3, 0xEEF4FF);
+        ARC(16, 16, 6.2f, -60, 30, 0.6f, 0xFFFFFF);
         break;
     case IC_TASKMGR:
-        monitor(0x0C140C, 0x002400);
-        TL(7, 15, 11, 11, 0.6f, 0x40FF40); TL(11, 11, 14, 14, 0.6f, 0x40FF40); TL(14, 14, 18, 8, 0.6f, 0x40FF40);
-        TL(18, 8, 21, 12, 0.6f, 0x40FF40); TL(21, 12, 25, 9, 0.6f, 0x40FF40);
+        monitor(0x0C180C, 0x001E00);
+        for (int i = 0; i < 4; i++) F(5, 8 + i * 3, 22, 0.4f, 0x0E4A0E);
+        TL(6, 15, 10, 11, 0.7f, 0x40FF40); TL(10, 11, 13.5f, 14, 0.7f, 0x40FF40); TL(13.5f, 14, 17.5f, 7.5f, 0.7f, 0x40FF40);
+        TL(17.5f, 7.5f, 21, 12, 0.7f, 0x40FF40); TL(21, 12, 26, 9, 0.7f, 0x40FF40);
         break;
     case IC_SNAKE:
-        RF(2, 2, 28, 28, 3, 0x1E3A1E);
-        TL(6, 24, 20, 24, 2, 0x50D050); TL(20, 24, 20, 12, 2, 0x50D050); TL(20, 12, 10, 12, 2, 0x50D050); TL(10, 12, 10, 7, 2.3f, 0x7CF06C);
-        C(9, 6, 0.8f, 0); C(11.5f, 6, 0.8f, 0);
-        C(25, 7, 3.2f, 0xE02828); C(24, 6, 1, 0xFF9090); TL(25, 3, 26, 1.5f, 0.5f, 0x6A4A20);
+        TILE(1.5f, 1.5f, 29, 29, 3.5f, 0x0E2A0E, 0x2E5A2A, 0x183A18, 40);
+        TL(6, 24.5f, 20.5f, 24.5f, 2.6f, 0x2E9A2E); TL(20.5f, 24.5f, 20.5f, 12.5f, 2.6f, 0x2E9A2E); TL(20.5f, 12.5f, 10, 12.5f, 2.6f, 0x2E9A2E);
+        TL(6, 24, 20.5f, 24, 1.8f, 0x5ED05A); TL(20, 24.5f, 20, 12.5f, 1.8f, 0x5ED05A); TL(20.5f, 12, 10, 12, 1.8f, 0x5ED05A);
+        E(10, 8.2f, 4, 3.6f, 0x2E9A2E); E(10, 7.8f, 3.4f, 3, 0x7CF06C);
+        C(8.6f, 7.2f, 0.9f, 0xFFFFFF); C(11.4f, 7.2f, 0.9f, 0xFFFFFF); C(8.8f, 7.4f, 0.45f, 0); C(11.6f, 7.4f, 0.45f, 0);
+        EG(25, 7.5f, 3.6f, 3.4f, 0xFF5050, 0xB01010); C(24, 6.3f, 1, 0xFFB0B0); TL(25, 4.2f, 26.4f, 2, 0.5f, 0x6A4A20);
+        E(27, 3.4f, 1.6f, 0.8f, 0x3AA030);
         break;
     case IC_CLOCK:
-        C(16, 16, 14, 0x16408E); C(16, 16, 12.5f, 0xFFFFFF);
-        for (int i = 0; i < 12; i++) { float a = i * 0.5236f; C(16 + 10.3f * sinf(a), 16 - 10.3f * cosf(a), i % 3 ? 0.6f : 1, 0x404040); }
-        TL(16, 16, 16, 8, 1, 0x101010); TL(16, 16, 22, 19, 0.8f, 0x101010); C(16, 16, 1.4f, 0xC02020);
+        C(16, 16, 14.5f, 0x0E2E70);
+        EG(16, 16, 13.6f, 13.6f, 0x4A7EE0, 0x123E96);
+        C(16, 16, 11.4f, 0x9AA8C0);
+        EG(16, 16, 10.8f, 10.8f, 0xFFFFFF, 0xE4E8F0);
+        for (int i = 0; i < 12; i++) { float a = i * 0.5236f; C(16 + 9.2f * sinf(a), 16 - 9.2f * cosf(a), i % 3 ? 0.55f : 0.95f, 0x303848); }
+        TL(16, 16, 16, 8.5f, 1, 0x141820); TL(16, 16, 21.5f, 18.5f, 0.8f, 0x141820); TL(16, 16, 11, 21, 0.35f, 0xD02020);
+        C(16, 16, 1.4f, 0xD02020);
+        EG(16, 10, 9, 5, 0xFFFFFF, 0xF4F6FA);
+        for (int i = 0; i < 12; i++) { float a = i * 0.5236f; if (16 - 9.2f * cosf(a) < 15) C(16 + 9.2f * sinf(a), 16 - 9.2f * cosf(a), i % 3 ? 0.55f : 0.95f, 0x303848); }
+        TL(16, 16, 16, 8.5f, 1, 0x141820);
+        GLOSS(7, 6, 18, 6, 60);
         break;
-    case IC_RECYCLE: case IC_RECYCLE_FULL:
-        TRI(7, 8, 25, 8, 9, 29, 0xB8C6B2); TRI(25, 8, 23, 29, 9, 29, 0x8A9A86);
-        GH(8, 8, 16, 21, 0xD0DCCA, 0x7C8C78);
-        for (int i = 0; i < 3; i++) TL(12 + i * 4, 11, 12 + i * 3.6f - 0.6f + 0.6f, 26, 0.5f, 0x5A6A58);
-        TL(7, 8, 9, 29, 0.5f, 0x4A5A48); TL(25, 8, 23, 29, 0.5f, 0x4A5A48); TL(9, 29, 23, 29, 0.5f, 0x4A5A48);
+    case IC_RECYCLE: case IC_RECYCLE_FULL: {
+        /* tapered bin with ribs; rim ellipse on top */
         if (id == IC_RECYCLE_FULL) {
-            page(0xD8D8D8);
-            GH(8, 12, 16, 17, 0xD0DCCA, 0x7C8C78);
-            TL(7, 8, 9, 29, 0.5f, 0x4A5A48); TL(25, 8, 23, 29, 0.5f, 0x4A5A48); TL(9, 29, 23, 29, 0.5f, 0x4A5A48);
-            TL(7, 12, 25, 12, 0.5f, 0x4A5A48);
-        } else {
-            RG(5, 5, 22, 3.5f, 1, 0xE6EEE2, 0x8A9A88); R(5, 5, 22, 3.5f, 0x4A5A48);
-            F(13, 3, 6, 2, 0x6A7A68);
+            QUAD(8, 3, 17, 1.5f, 18.5f, 9, 9.5f, 10, 0x8A8A8A); QUAD(8.6f, 3.6f, 16.6f, 2.2f, 17.8f, 8.6f, 10, 9.4f, 0xFFFFFF);
+            for (int i = 0; i < 3; i++) TL(10.5f, 4.6f + i * 1.6f, 16, 3.8f + i * 1.6f, 0.3f, 0x8AA0C8);
+            QUAD(15, 2.5f, 24, 4, 22.5f, 10, 13.6f, 9, 0x8A8A8A); QUAD(15.6f, 3.2f, 23.2f, 4.6f, 21.8f, 9.4f, 14.4f, 8.6f, 0xFFF4C0);
         }
-        break;
+        int x0 = X0 + S(7), x1 = X0 + S(25), y0 = Y0 + S(8.5f), y1 = Y0 + S(29.5f);
+        for (int y = y0; y < y1; y++) {
+            float t = (float)(y - y0) / (y1 - y0);
+            int l = x0 + (int)(t * S(2)), r = x1 - (int)(t * S(2));
+            for (int x = l; x < r; x++) {
+                float u = (float)(x - l) / (r - l);
+                float sh = 0.55f + 0.45f * sinf(u * 3.1416f * 0.85f + 0.35f);
+                int rib = ((int)(u * 7 * 2)) % 2;
+                uint32_t c = mix(0x5A6A58, 0xDCE8D8, (int)(sh * 256));
+                if (rib) c = shade(c, 92);
+                pset(x, y, c);
+            }
+        }
+        E(16, 29.3f, 7, 1.2f, 0x4A5A48);
+        E(16, 8.5f, 9.6f, 2.5f, 0x4A5A48);
+        EG(16, 8.3f, 8.8f, 1.9f, 0xF0F6EE, 0x9AAA98);
+        E(16, 8.6f, 7.4f, 1.2f, id == IC_RECYCLE_FULL ? 0xE8E0C0 : 0x3A4A38);
+        break; }
     case IC_HELP: case IC_INFO:
-        C(16, 16, 14, 0x0E44B0); C(16, 15.4f, 12.8f, 0x3A86EE); C(14, 10, 6, 0x5CA0F4);
-        if (id == IC_INFO) glyph_i(16, 16.5f, 0xFFFFFF);
+        sphere(0x0A3A9E, 0x5A9AF4, 0x1450C8);
+        if (id == IC_INFO) glyph_i(16, 17, 0xFFFFFF);
         else {
-            ARC(16, 12, 4.8f, -80, 150, 1.4f, 0xFFFFFF);
-            TL(18.4f, 16.2f, 16, 18.5f, 1.4f, 0xFFFFFF);
-            TL(16, 18.5f, 16, 20, 1.4f, 0xFFFFFF);
-            C(16, 24.2f, 2, 0xFFFFFF);
+            ARC(16, 12.5f, 4.8f, -80, 150, 1.5f, 0xFFFFFF);
+            TL(18.4f, 16.7f, 16, 19, 1.5f, 0xFFFFFF);
+            TL(16, 19, 16, 20.5f, 1.5f, 0xFFFFFF);
+            C(16, 24.6f, 2, 0xFFFFFF);
         }
         break;
     case IC_WARN:
-        TRI(16, 2, 31, 29, 1, 29, 0x8A6400);
-        TRI(16, 4.2f, 29.2f, 27.8f, 2.8f, 27.8f, 0xFFD838);
-        glyph_ex(16, 18, 0x101010);
+        TRI(16, 1.5f, 31, 29, 1, 29, 0x7A5600);
+        TRI(16, 4.2f, 29, 27.6f, 3, 27.6f, 0xFFD436);
+        TRI(16, 4.2f, 23, 17, 9, 17, 0xFFE878);
+        glyph_ex(16, 18.5f, 0x141414);
         break;
     case IC_ERROR:
-        C(16, 16, 14, 0x8A1010); C(16, 15.5f, 13, 0xE23A2A);
-        TL(10.5f, 10.5f, 21.5f, 21.5f, 1.8f, 0xFFFFFF); TL(21.5f, 10.5f, 10.5f, 21.5f, 1.8f, 0xFFFFFF);
+        sphere(0x7A0A0A, 0xF0584A, 0xB81A12);
+        TL(10.5f, 10.5f, 21.5f, 21.5f, 1.9f, 0xFFFFFF); TL(21.5f, 10.5f, 10.5f, 21.5f, 1.9f, 0xFFFFFF);
         break;
-    case IC_FOLDER: folder(0xFFE69A, 0xEDB84A, 0xB88A28); break;
-    case IC_DOCS: folder(0xFFE69A, 0xEDB84A, 0xB88A28); F(9, 13, 14, 12, 0xFFFFFF); for (int i = 0; i < 4; i++) F(11, 15 + i * 2.4f, 10, 0.8f, 0x8090B0); break;
-    case IC_PICS: folder(0xFFE69A, 0xEDB84A, 0xB88A28); GV(9, 13, 14, 11, 0x7CC0FF, 0x5AB04A); C(19, 16, 1.6f, 0xFFF080); R(9, 13, 14, 11, 0xFFFFFF); break;
-    case IC_MUSICF: folder(0xFFE69A, 0xEDB84A, 0xB88A28); C(13, 22, 2.4f, 0x3050C0); C(20, 20.5f, 2.4f, 0x3050C0); TL(15, 22, 15, 13, 0.6f, 0x3050C0); TL(22, 20.5f, 22, 11.5f, 0.6f, 0x3050C0); TL(15, 13, 22, 11.5f, 1, 0x3050C0); break;
+    case IC_FOLDER: folder(0xFFE89C, 0xEDB040, 0xA87A1C); break;
+    case IC_DOCS:
+        folder(0xFFE89C, 0xEDB040, 0xA87A1C);
+        F(10, 15.5f, 13, 9.5f, 0xFFFFFF); R(10, 15.5f, 13, 9.5f, 0x9A9A9A);
+        for (int i = 0; i < 4; i++) F(11.8f, 17.5f + i * 1.9f, 9.4f, 0.7f, 0x6E82AA);
+        break;
+    case IC_PICS:
+        folder(0xFFE89C, 0xEDB040, 0xA87A1C);
+        F(9.5f, 15, 14, 11, 0xFFFFFF); GV(10.5f, 16, 12, 9, 0x6CB4FF, 0xC0E4FF);
+        TRI(10.5f, 25, 15, 19, 19.5f, 25, 0x3E9A3A); TRI(15, 25, 19, 21, 22.5f, 25, 0x2A7A26); C(20, 18.2f, 1.3f, 0xFFF070);
+        break;
+    case IC_MUSICF:
+        folder(0xFFE89C, 0xEDB040, 0xA87A1C);
+        C(12.5f, 23.5f, 2.4f, 0x2A46B8); C(20, 22, 2.4f, 0x2A46B8);
+        TL(14.6f, 23.5f, 14.6f, 15, 0.6f, 0x2A46B8); TL(22.1f, 22, 22.1f, 13.5f, 0.6f, 0x2A46B8); TL(14.6f, 15, 22.1f, 13.5f, 1, 0x2A46B8);
+        break;
     case IC_DESKTOP:
-        RF(2, 5, 28, 20, 2, 0x2A4A8A); GV(3.5f, 6.5f, 25, 15, 0x5A9AF0, 0x5CB848); F(3.5f, 19, 25, 2.5f, 0x2A5AD0); F(3.5f, 19, 6, 2.5f, 0x3CA03C);
-        F(12, 25, 8, 3, 0x6A6A6A); F(9, 28, 14, 1.5f, 0x5A5A5A);
+        TILE(1.5f, 4, 29, 21, 2, 0x1E3A7A, 0x3E6AC8, 0x2A50A8, 0);
+        GV(3, 5.5f, 26, 14, 0x5A9AF0, 0xB0D8FF);
+        QUAD(3, 15, 29, 13, 29, 19.5f, 3, 19.5f, 0x4CB040);
+        F(3, 19.5f, 26, 3.6f, 0x2A5AD0); RF(3, 19.5f, 7, 3.6f, 1, 0x3CA03C);
+        GV(12.5f, 25, 7, 3, 0x8A8A8A, 0x5A5A5A); RF(8.5f, 28, 15, 2, 1, 0x4A4A4A);
         break;
     case IC_SHOWDESK:
-        RF(4, 6, 24, 18, 2, 0x2A4A8A); GV(5.5f, 7.5f, 21, 15, 0xDDEBFF, 0x8AB0E8);
-        F(8, 10, 10, 7, 0xFFFFFF); R(8, 10, 10, 7, 0x3A5AA0); F(8, 10, 10, 2, 0x3A6AD8);
-        TL(14, 26, 22, 18, 1, 0x30A030); F(20, 18, 3, 1.5f, 0x30A030);
+        TILE(3, 5, 26, 20, 2, 0x1E3A7A, 0xE6F0FF, 0x9AB8E8, 0);
+        TILE(6, 8.5f, 12, 9, 1, 0x2A4A90, 0xFFFFFF, 0xE8EEF8, 0);
+        RG(6.6f, 9.1f, 10.8f, 2.2f, 0.6f, 0x5A8AF0, 0x2A5AD0);
+        TL(13, 27, 23, 19, 1.4f, 0x2A8A2A); TRI(19, 17.5f, 25.5f, 17, 24.5f, 23.5f, 0x2A8A2A);
         break;
     case IC_EXPLORER:
-        folder(0xFFE69A, 0xEDB84A, 0xB88A28);
-        RING(19, 19, 6, 1.8f, 0x2A5AC8); C(19, 19, 4.2f, 0xC8E4FF); C(17.5f, 17.5f, 1.5f, 0xFFFFFF);
-        TL(23.5f, 23.5f, 28.5f, 28.5f, 1.6f, 0x6A4A20);
+        folder(0xFFE89C, 0xEDB040, 0xA87A1C);
+        TL(23.2f, 23.2f, 29, 29, 2, 0x5A3A10); TL(23.2f, 23.2f, 28.6f, 28.6f, 1.1f, 0xA86A28);
+        C(19, 19, 6.6f, 0x24489A); EG(19, 19, 5.2f, 5.2f, 0xD8EEFF, 0x8AB8E8);
+        C(17.4f, 17.2f, 1.6f, 0xFFFFFF);
         break;
     case IC_LOGO: {
-        /* isometric cube: top orange, left green, right blue */
-        TRI(16, 3, 29, 9.5f, 16, 16, 0xF7A43A); TRI(16, 3, 3, 9.5f, 16, 16, 0xF59A23);
-        TRI(3, 9.5f, 16, 16, 3, 23.5f, 0x44BC52); TRI(16, 16, 16, 30, 3, 23.5f, 0x2E9038);
-        TRI(29, 9.5f, 16, 16, 29, 23.5f, 0x3C88EE); TRI(16, 16, 16, 30, 29, 23.5f, 0x1F5CC0);
-        TL(16, 16, 16, 30, 0.35f, 0xFFFFFF); TL(3, 9.5f, 16, 16, 0.35f, 0xFFFFFF); TL(29, 9.5f, 16, 16, 0.35f, 0xFFFFFF);
+        TRI(16, 2.5f, 29.5f, 9.5f, 16, 16.5f, 0xF8B04A); TRI(16, 2.5f, 2.5f, 9.5f, 16, 16.5f, 0xF59A23);
+        TRI(2.5f, 9.5f, 16, 16.5f, 2.5f, 23.5f, 0x4CC85A); TRI(16, 16.5f, 16, 30, 2.5f, 23.5f, 0x2A8A34);
+        TRI(29.5f, 9.5f, 16, 16.5f, 29.5f, 23.5f, 0x4A94F4); TRI(16, 16.5f, 16, 30, 29.5f, 23.5f, 0x1A54B8);
+        TRI(16, 4.5f, 23, 8.2f, 16, 11.8f, 0xFFD088);
+        TL(16, 16.5f, 16, 30, 0.35f, 0xFFFFFF); TL(2.5f, 9.5f, 16, 16.5f, 0.35f, 0xFFFFFF); TL(29.5f, 9.5f, 16, 16.5f, 0.35f, 0xFFFFFF);
         break; }
     case IC_DRIVE:
-        RG(2, 10, 28, 14, 2, 0xF0F0F0, 0x9A9A9A); R(2, 10, 28, 14, 0x505050);
-        F(5, 18, 13, 1, 0x707070); F(5, 20, 13, 1, 0x707070); C(25, 18.5f, 1.4f, 0x30E030);
+        QUAD(4, 9, 28, 9, 30.5f, 14, 1.5f, 14, 0x6A6A6A);
+        QUAD(4.6f, 9.6f, 27.4f, 9.6f, 29.4f, 13.6f, 2.6f, 13.6f, 0xF4F4F4);
+        TILE(1.5f, 13.5f, 29, 11, 1.5f, 0x5A5A5A, 0xE4E4E4, 0x9A9A9A, 0);
+        F(4, 18, 14, 0.8f, 0x707070); F(4, 20, 14, 0.8f, 0x707070);
+        C(26, 19, 1.6f, 0x206020); C(26, 19, 1.1f, 0x40F040); C(25.7f, 18.6f, 0.4f, 0xD0FFD0);
         break;
     case IC_SDCARD:
-        TRI(8, 2, 13, 2, 8, 7, 0x2A2A2A); F(8, 6, 18, 24, 0x2A3A6A); F(13, 2, 13, 5, 0x2A3A6A); TRI(8, 2, 13, 2, 8, 7, 0);
-        for (int i = 0; i < 5; i++) F(14 + i * 2.4f, 3, 1.4f, 4, 0xE0C060);
-        RF(10, 12, 14, 12, 1, 0xF4F4F4); F(12, 15, 10, 1.5f, 0x2A3A6A); F(12, 19, 7, 1.5f, 0x2A3A6A);
+        QUAD(8, 2, 26, 2, 26, 30, 8, 30, 0x1E2A4E); TRI(8, 2, 13, 2, 8, 7, 0);
+        QUAD(8.7f, 2.7f, 25.3f, 2.7f, 25.3f, 29.3f, 8.7f, 29.3f, 0x34487E); TRI(8.7f, 2.7f, 13, 2.7f, 8.7f, 7, 0);
+        TRI(8, 1.5f, 13.6f, 1.5f, 8, 7.6f, 0);
+        for (int i = 0; i < 5; i++) F(14 + i * 2.3f, 3, 1.4f, 4.4f, 0xE8C860);
+        RF(10.5f, 12, 13, 13, 1, 0xF8F8F8); F(12.5f, 15, 9, 1.4f, 0x34487E); F(12.5f, 18.5f, 6, 1.4f, 0x34487E);
+        GLOSS(9, 8, 16, 4, 60);
         break;
     case IC_DISC:
-        C(16, 16, 14, 0x8A8A9A); C(16, 16, 13.2f, 0xDDE2EE);
-        C(16, 16, 9.5f, 0xBCCCF4); C(16, 16, 6.5f, 0xEED4F4); C(16, 16, 3.5f, 0x8A8A9A); C(16, 16, 2.4f, 0xFFFFFF);
-        TL(8, 9, 12, 7, 0.6f, 0xFFFFFF);
+        C(16, 16, 14.5f, 0x7A7A8A);
+        for (int r = 13; r > 3; r--) C(16, 16, r + 0.4f, mix(0xC8D4F0, 0xF0D8F0, (r * 37) & 255));
+        QUAD(16, 16, 27, 7, 29, 10, 16, 16, 0xFFFFFF);
+        QUAD(16, 16, 5, 25, 3, 22, 16, 16, 0xFFF0FF);
+        C(16, 16, 4, 0x8A8A9A); C(16, 16, 3, 0xF4F4F8); C(16, 16, 1.8f, 0x8A8A9A);
         break;
     case IC_PAD:
-        RF(2, 9, 28, 16, 7, 0x2E2470); RF(3, 10, 26, 14, 6, 0x5848B8); RF(3, 10, 26, 5, 4, 0x6C5CCC);
-        C(9.5f, 16, 4, 0x3A3090); F(7, 15, 5, 2, 0xE0E0F0); F(8.5f, 13.5f, 2, 5, 0xE0E0F0);
-        C(22.5f, 16.5f, 3, 0x36C468); C(26.5f, 13, 1.4f, 0xE84848); C(18.5f, 20, 1.3f, 0xF4C820);
+        E(9, 20, 7, 8.5f, 0x22185E); E(23, 20, 7, 8.5f, 0x22185E);
+        RF(4, 10, 24, 14, 6, 0x22185E);
+        EG(9, 19.5f, 6.2f, 7.8f, 0x7262D8, 0x3C2E98); EG(23, 19.5f, 6.2f, 7.8f, 0x7262D8, 0x3C2E98);
+        RG(5, 10.8f, 22, 12.4f, 5.2f, 0x7A6AE0, 0x4A3AA8);
+        GLOSS(6, 11, 20, 4, 90);
+        C(9.5f, 17, 4, 0x2E2478); RF(7, 16, 5, 2, 0.4f, 0xE8E8F4); RF(8.5f, 14.5f, 2, 5, 0.4f, 0xE8E8F4);
+        C(22.5f, 17.5f, 3, 0x1E8A40); C(22.5f, 17.2f, 2.5f, 0x3ED470); C(26.5f, 14, 1.5f, 0xE84848); C(18.8f, 21, 1.4f, 0xF4C820);
         break;
-    case IC_POWER:
-        RG(2, 2, 28, 28, 5, 0xF49070, 0xC23412);
-        RING(16, 17, 8.5f, 2.2f, 0xFFFFFF);
-        F(13.4f, 4.5f, 5.2f, 8, 0xD84A28); RF(14.8f, 5, 2.4f, 11.5f, 1, 0xFFFFFF);
-        break;
-    case IC_RESTART:
-        RG(2, 2, 28, 28, 5, 0x8EDC7C, 0x2C8A20);
-        RING(16, 16, 8.5f, 2.2f, 0xFFFFFF);
-        F(16, 5, 8, 9, 0x56B046);
-        TRI(17, 4, 24, 8, 17, 12.5f, 0xFFFFFF);
-        break;
-    case IC_LOGOFF:
-        RG(2, 2, 28, 28, 5, 0xFFD878, 0xD8880E);
-        RING(11.5f, 16, 5, 2.2f, 0xFFFFFF);
-        TL(16.5f, 16, 27, 16, 1.1f, 0xFFFFFF); TL(23, 16, 23, 21, 1.1f, 0xFFFFFF); TL(26, 16, 26, 20, 1, 0xFFFFFF);
-        break;
+    case IC_POWER: case IC_RESTART: case IC_LOGOFF: {
+        uint32_t e = id == IC_POWER ? 0x8A1E08 : id == IC_RESTART ? 0x1E6A14 : 0x9A5A04;
+        uint32_t c1 = id == IC_POWER ? 0xF8987A : id == IC_RESTART ? 0x9CE48A : 0xFFDC84;
+        uint32_t c2 = id == IC_POWER ? 0xC8340E : id == IC_RESTART ? 0x2E9A22 : 0xE08A0A;
+        TILE(1.5f, 1.5f, 29, 29, 5.5f, e, c1, c2, 110);
+        if (id == IC_POWER) { ARC(16, 17, 8, 35, 325, 2.2f, 0xFFFFFF); RF(14.7f, 5, 2.6f, 12, 1.2f, 0xFFFFFF); }
+        else if (id == IC_RESTART) { ARC(16, 16.5f, 8, 60, 330, 2.2f, 0xFFFFFF); TRI(16, 3.5f, 23.5f, 8.5f, 16, 13.5f, 0xFFFFFF); }
+        else { RING(11.5f, 16, 5, 2.2f, 0xFFFFFF); TL(16.5f, 16, 27, 16, 1.1f, 0xFFFFFF); TL(23, 16, 23, 21, 1.1f, 0xFFFFFF); TL(26, 16, 26, 20, 1, 0xFFFFFF); }
+        break; }
     case IC_RUN:
-        RF(2, 5, 28, 22, 2, 0x16448E); F(3.5f, 10, 25, 15.5f, 0xFFFFFF);
-        GH(3.5f, 6.5f, 25, 3.5f, 0x2A6AE0, 0x8ABCF8);
-        TL(9, 22, 19, 14, 1.4f, 0x2EA030); TRI(15, 11, 23, 11, 23, 19, 0x2EA030);
+        RF(1.5f, 4.5f, 29, 23, 2, 0x163A82);
+        RG(2.3f, 5.3f, 27.4f, 4.4f, 1.4f, 0x5A9AF8, 0x1A56D8);
+        F(2.3f, 9.7f, 27.4f, 17, 0xFFFFFF);
+        GV(2.3f, 9.7f, 27.4f, 17, 0xFFFFFF, 0xE4EAF4);
+        TL(8, 23.5f, 18, 14.5f, 1.6f, 0x1E8A20); TRI(13.5f, 11.5f, 22.5f, 10.5f, 21.5f, 19.5f, 0x1E8A20);
+        TL(8.4f, 22.8f, 17.6f, 14.6f, 0.7f, 0x5ACA50);
         break;
     case IC_KEYBOARD:
-        RF(1, 9, 30, 16, 2.5f, 0x5A5A5A); RG(2, 10, 28, 14, 2, 0xF8F8F8, 0xC4C4C4);
-        for (int r = 0; r < 3; r++) for (int c = 0; c < 7; c++) RF(4 + c * 3.4f + r * 0.8f, 12 + r * 3.3f, 2.5f, 2.3f, 0.5f, 0x4A4A4A);
-        RF(9, 21.5f, 14, 1.8f, 0.5f, 0x4A4A4A);
+        QUAD(3, 9, 29, 9, 31, 24, 1, 24, 0x4A4A4A);
+        QUAD(3.6f, 9.6f, 28.4f, 9.6f, 30, 23.2f, 2, 23.2f, 0xD8D8D8);
+        for (int r = 0; r < 3; r++)
+            for (int c = 0; c < 8; c++) {
+                float kx = 4.5f + c * 3.05f + r * 0.5f - (r == 2 ? 0.3f : 0), ky = 11 + r * 3.4f;
+                RF(kx, ky, 2.6f, 2.6f, 0.5f, 0x6A6A6A); RF(kx + 0.2f, ky + 0.1f, 2.2f, 2, 0.4f, 0xFCFCFC);
+            }
+        RF(9, 21, 14, 1.8f, 0.5f, 0x6A6A6A); RF(9.2f, 21.1f, 13.6f, 1.3f, 0.4f, 0xFCFCFC);
         break;
     case IC_USER:
-        GV(0, 0, 32, 20, 0x7ECCF4, 0xC8ECFF);
+        GV(0, 0, 32, 20, 0x6EC4F4, 0xC8ECFF);
         GV(0, 20, 32, 12, 0x48A848, 0x2A7A2A);
-        TL(16, 31, 16, 17, 1.1f, 0x2A7A20);
-        TRI(16, 25, 10, 21, 16, 22, 0x3A9A30);
-        for (int a = 0; a < 10; a++) { float an = a * 0.628f; C(16 + 6.5f * sinf(an), 12 - 6.5f * cosf(an), 3.2f, 0xFFD020); }
-        C(16, 12, 4.6f, 0x6A3A10); C(15, 11, 1.5f, 0x8A5A30);
+        TL(16, 31, 16, 18, 1.1f, 0x2A7A20);
+        E(12, 24, 4, 1.6f, 0x3A9A30); E(20.5f, 21.5f, 4, 1.6f, 0x3A9A30);
+        for (int a = 0; a < 12; a++) { float an = a * 0.5236f; E(16 + 6.6f * sinf(an), 12 - 6.6f * cosf(an), 2.6f, 2.6f, mix(0xFFE040, 0xF0A010, (a * 40) & 255)); }
+        C(16, 12, 4.8f, 0x5A2E08); EG(16, 12, 4, 4, 0x8A5A2A, 0x4A2604); C(14.8f, 10.8f, 1.2f, 0xA87A48);
+        R(0, 0, 32, 32, 0xFFFFFF);
         break;
     case IC_SOUND:
-        F(4, 12, 6, 8, 0x50586E);
-        TRI(9, 12, 17, 5, 17, 27, 0x50586E); F(9, 12, 2, 8, 0x50586E);
-        ARC(17, 16, 5.5f, 45, 135, 0.9f, 0x2E6ED0);
-        ARC(17, 16, 10, 40, 140, 0.9f, 0x2E6ED0);
+        RF(3.5f, 11.5f, 7, 9, 1, 0x3A4054); RG(4.2f, 12.2f, 5.6f, 7.6f, 0.6f, 0x8A94B0, 0x4E5670);
+        TRI(9.5f, 12, 18, 4.5f, 18, 27.5f, 0x3A4054); TRI(10.5f, 12.6f, 17.2f, 6.4f, 17.2f, 25.6f, 0x6E7894);
+        ARC(18, 16, 5.5f, 45, 135, 1, 0x2E6ED0);
+        ARC(18, 16, 10, 40, 140, 1, 0x2E6ED0);
         break;
     case IC_SOLITAIRE:
-        RF(4, 6, 16, 22, 2, 0x404040); RF(4.5f, 6.5f, 15, 21, 1.8f, 0x1A4AA8);
-        for (int i = 0; i < 4; i++) TL(6, 9 + i * 4, 18, 13 + i * 4, 0.4f, 0x5A8AE8);
-        RF(12, 3, 17, 23, 2, 0x606060); RF(12.5f, 3.5f, 16, 22, 1.8f, 0xFFFFFF);
-        C(18, 14, 3.2f, 0xD42020); C(23, 14, 3.2f, 0xD42020); TRI(15, 15, 26, 15, 20.5f, 22, 0xD42020);
+        card(3, 7, 16, 22, 1);
+        card(13, 3, 17, 23, 0);
+        heart(21.5f, 13.5f, 4.2f, 0xD42020);
+        C(19.6f, 11.6f, 0.9f, 0xFF9A9A);
+        TL(14.6f, 9, 16.1f, 4.6f, 0.35f, 0xD42020); TL(16.1f, 4.6f, 17.6f, 9, 0.35f, 0xD42020); TL(15.2f, 7.4f, 17, 7.4f, 0.3f, 0xD42020);
         break;
     case IC_BLOCKS:
-        RF(2, 2, 28, 28, 3, 0x14142A);
-        { static const uint32_t cc[] = { 0x30C0F0, 0xF0C030, 0xE04050, 0x50D060, 0xA060E8 };
-          static const int bx[] = { 5, 10, 15, 5, 10, 20, 20, 15, 10, 20 }, by[] = { 23, 23, 23, 18, 18, 23, 18, 18, 8, 13 };
-          for (int i = 0; i < 10; i++) { RF(bx[i], by[i], 4.6f, 4.6f, 0.8f, cc[i % 5]); F(bx[i] + 0.6f, by[i] + 0.6f, 3.4f, 1, 0xFFFFFF); } }
+        TILE(1.5f, 1.5f, 29, 29, 3.2f, 0x06060E, 0x24244A, 0x0E0E1E, 0);
+        { static const uint32_t cc[] = { 0x34C8F4, 0xF4C834, 0xEC4858, 0x54D864, 0xA868EC };
+          static const float bx[] = { 5, 10, 15, 5, 10, 20, 20, 15, 10, 20 }, by[] = { 23, 23, 23, 18, 18, 23, 18, 18, 7, 12 };
+          for (int i = 0; i < 10; i++) {
+              uint32_t c = cc[i % 5];
+              RF(bx[i], by[i], 4.8f, 4.8f, 0.8f, shade(c, 60));
+              RG(bx[i] + 0.4f, by[i] + 0.4f, 4, 4, 0.6f, mix(c, 0xFFFFFF, 80), c);
+              F(bx[i] + 0.8f, by[i] + 0.8f, 3.2f, 0.7f, 0xFFFFFF);
+          } }
         break;
-    case IC_VIEWER: case IC_IMAGEFILE:
-        if (id == IC_IMAGEFILE) { page(0xD8D8D8); GV(9, 12, 15, 14, 0x7CC0FF, 0xC0E4FF); TRI(9, 26, 15, 17, 21, 26, 0x4AA040); TRI(15, 26, 20, 20, 24, 26, 0x2E8A2A); C(20, 15, 1.6f, 0xFFE860); }
-        else {
-            RF(2, 4, 28, 24, 2, 0x7A6040); RG(3.5f, 5.5f, 25, 21, 1, 0xF0D8A8, 0xC8A870);
-            GV(6, 8, 20, 16, 0x6CB4FF, 0xC0E0FF); TRI(6, 24, 14, 13, 22, 24, 0x48A040); TRI(14, 24, 20, 17, 26, 24, 0x2E8A2A);
-            C(21, 12, 2.2f, 0xFFF080);
-        }
+    case IC_VIEWER:
+        TILE(1.5f, 3.5f, 29, 25, 2, 0x6A4E2A, 0xF8E2B4, 0xC8A468, 0);
+        RF(4.5f, 6.5f, 23, 19, 0.5f, 0x8A6A3A);
+        GV(5, 7, 22, 18, 0x5AA8FF, 0xC8E6FF);
+        TRI(5, 25, 13, 13, 21, 25, 0x3E9A3A); TRI(13, 25, 19.5f, 16.5f, 27, 25, 0x267A22);
+        C(21.5f, 11.5f, 2.3f, 0xFFF080); C(21.5f, 11.5f, 1.4f, 0xFFFCD0);
         break;
-    case IC_MUSIC: case IC_SONGFILE:
-        if (id == IC_SONGFILE) page(0xD8D8D8);
-        else { C(16, 16, 14, 0xE87A1A); C(16, 15, 12.6f, 0xFFA040); C(13, 11, 6, 0xFFB868); }
-        { uint32_t nc = id == IC_SONGFILE ? 0x3050C0 : 0xFFFFFF;
-          C(12, 22.5f, 3, nc); C(21, 20.5f, 3, nc); TL(14.6f, 22.5f, 14.6f, 10, 0.8f, nc); TL(23.6f, 20.5f, 23.6f, 8, 0.8f, nc);
-          TL(14.6f, 10.5f, 23.6f, 8.5f, 1.4f, nc); }
+    case IC_IMAGEFILE:
+        page(0);
+        RF(8.5f, 11, 16, 14, 0.6f, 0x6A6A6A);
+        GV(9, 11.5f, 15, 13, 0x5AA8FF, 0xC8E6FF);
+        TRI(9, 24.5f, 15, 16, 21, 24.5f, 0x3E9A3A); TRI(15, 24.5f, 19.5f, 19, 24, 24.5f, 0x267A22); C(20, 14.5f, 1.6f, 0xFFF070);
+        break;
+    case IC_MUSIC:
+        sphere(0xA84A08, 0xFFB050, 0xE06A10);
+        { uint32_t nc = 0xFFFFFF;
+          E(12, 22.5f, 3.4f, 2.6f, nc); E(21, 20.5f, 3.4f, 2.6f, nc); TL(15, 22, 15, 10, 0.8f, nc); TL(24, 20, 24, 8, 0.8f, nc);
+          QUAD(14.2f, 9.5f, 24.8f, 7, 24.8f, 10, 14.2f, 12.5f, nc); }
+        break;
+    case IC_SONGFILE:
+        page(0);
+        { uint32_t nc = 0x2A46B8;
+          E(12, 23.5f, 3, 2.3f, nc); E(20, 22, 3, 2.3f, nc); TL(14.6f, 23, 14.6f, 12.5f, 0.7f, nc); TL(22.6f, 21.5f, 22.6f, 11, 0.7f, nc);
+          QUAD(13.9f, 12, 23.3f, 10, 23.3f, 12.6f, 13.9f, 14.6f, nc); }
         break;
     case IC_STICKY:
-        TRI(4, 4, 28, 4, 4, 28, 0xFFF070); F(4, 4, 24, 18, 0xFFF070); TRI(28, 4, 28, 22, 22, 28, 0xFFF070); F(4, 22, 18, 6, 0xFFF070);
-        TRI(22, 28, 28, 22, 22, 22, 0xD8C440);
-        for (int i = 0; i < 4; i++) F(8, 10 + i * 4, 15 - (i == 3 ? 6 : 0), 1, 0xA89A30);
-        F(4, 4, 24, 3, 0xF4D838);
+        QUAD(4, 4, 28, 4, 28, 23, 22, 29, 0xB8A42A); TRI(4, 4, 22, 29, 4, 29, 0xB8A42A);
+        QUAD(4.7f, 4.7f, 27.3f, 4.7f, 27.3f, 22.6f, 21.8f, 28.3f, 0xFFF280); TRI(4.7f, 4.7f, 21.8f, 28.3f, 4.7f, 28.3f, 0xFFF280);
+        GV(4.7f, 4.7f, 22.6f, 4, 0xF8DC3C, 0xF8E460);
+        TRI(21.8f, 28.3f, 27.3f, 22.6f, 21.8f, 22.6f, 0xE0C840);
+        for (int i = 0; i < 4; i++) F(8, 12 + i * 3.6f, i == 3 ? 8 : 15, 0.9f, 0xA8962A);
         break;
-    case IC_FILE: page(0xD8D8D8); break;
+    case IC_FILE: page(0); break;
     case IC_APPFILE:
-        RF(4, 6, 24, 20, 2, 0x2A4A8A); GV(5, 7, 22, 4, 0x3A7AE8, 0x2A5AC8); F(5, 11, 22, 14, 0xF4F4F4);
-        C(16, 18, 4, 0x3CA03C);
+        RF(3, 5.5f, 26, 21, 2, 0x1A3A7A); RG(3.8f, 6.3f, 24.4f, 4.4f, 1.4f, 0x5A9AF8, 0x1A56D8); F(3.8f, 10.7f, 24.4f, 15, 0xF6F6F6);
+        C(16, 18, 4.4f, 0x1E8A20); C(16, 17.6f, 3.8f, 0x4CC844);
         break;
     case IC_SCRIPT:
-        page(0xD8D8D8);
-        RF(9, 12, 15, 14, 1.5f, 0x1E1A2E); TL(11.5f, 15, 14, 17.5f, 0.6f, 0x6CF08C); TL(14, 17.5f, 11.5f, 20, 0.6f, 0x6CF08C); F(15, 20, 5, 1.2f, 0xFFFFFF);
+        page(0);
+        RF(8.5f, 11.5f, 16, 14.5f, 1.5f, 0x0E0A18); RG(9, 12, 15, 13.5f, 1.2f, 0x3E3266, 0x14101E);
+        TL(11, 15, 13.8f, 17.8f, 0.7f, 0x6CF08C); TL(13.8f, 17.8f, 11, 20.6f, 0.7f, 0x6CF08C); F(15, 20, 5.5f, 1.3f, 0xFFFFFF);
         break;
     case IC_UP:
-        F(13, 12, 6, 16, 0x2E9A2E); TRI(5, 14, 27, 14, 16, 3, 0x2E9A2E);
+        QUAD(12.5f, 13, 19.5f, 13, 19.5f, 29, 12.5f, 29, 0x1E6A1E); TRI(3.5f, 15, 28.5f, 15, 16, 2, 0x1E6A1E);
+        QUAD(13.5f, 14, 18.5f, 14, 18.5f, 28, 13.5f, 28, 0x48B848); TRI(5.6f, 14.2f, 26.4f, 14.2f, 16, 3.6f, 0x48B848);
+        TRI(8, 13, 16, 4.8f, 16, 13, 0x7ADA6A);
         break;
     case IC_BACK:
-        C(16, 16, 13, 0x2A8A2A); C(16, 15, 12, 0x48B848);
-        TRI(7, 16, 16, 8, 16, 24, 0xFFFFFF); F(15, 13, 10, 6, 0xFFFFFF);
+        sphere(0x1E6A1E, 0x7AD86A, 0x2E9A2E);
+        TRI(7, 16, 16, 8, 16, 24, 0xFFFFFF); RF(15, 13, 10, 6, 1, 0xFFFFFF);
         break;
     case IC_NEWFOLDER:
-        folder(0xFFE69A, 0xEDB84A, 0xB88A28);
-        C(24, 8, 5.5f, 0xFFF4A0); for (int a = 0; a < 8; a++) { float an = a * 0.785f; TL(24, 8, 24 + 7 * sinf(an), 8 - 7 * cosf(an), 0.5f, 0xF0C020); } C(24, 8, 3, 0xFFFFC0);
+        folder(0xFFE89C, 0xEDB040, 0xA87A1C);
+        for (int a = 0; a < 8; a++) { float an = a * 0.785f; TL(24, 8, 24 + 7.5f * sinf(an), 8 - 7.5f * cosf(an), 0.6f, 0xF0B820); }
+        C(24, 8, 4, 0xFFE860); C(24, 8, 2.4f, 0xFFFFD0);
+        break;
+    case IC_LINUX:
+        RF(1.5f, 3.5f, 24, 20, 2.6f, 0x0E0A18);
+        RG(2.3f, 4.3f, 22.4f, 18.4f, 2, 0x3A3A44, 0x14141A);
+        TL(5, 8, 8.5f, 10.5f, 0.9f, 0x8AE234); TL(8.5f, 10.5f, 5, 13, 0.9f, 0x8AE234); F(10, 12.5f, 6, 1.4f, 0xE8E8F0);
+        /* a little penguin standing in front */
+        E(22, 22, 8, 9.5f, 0x101018);
+        EG(22, 24, 5.6f, 7, 0xFFFFFF, 0xD8DCE4);
+        E(22, 13.2f, 5.6f, 5.4f, 0x101018);
+        E(20.2f, 12.6f, 1.6f, 1.9f, 0xFFFFFF); E(23.8f, 12.6f, 1.6f, 1.9f, 0xFFFFFF);
+        C(20.6f, 12.9f, 0.7f, 0x101018); C(23.4f, 12.9f, 0.7f, 0x101018);
+        TRI(19.4f, 15, 24.6f, 15, 22, 17.6f, 0xF4A81C);
+        E(18, 30.2f, 3.4f, 1.4f, 0xF4A81C); E(26, 30.2f, 3.4f, 1.4f, 0xF4A81C);
+        E(14.6f, 23, 1.8f, 5, 0x101018); E(29.4f, 23, 1.8f, 5, 0x101018);
+        GLOSS(17, 9, 10, 3, 50);
         break;
     case IC_DELETE:
-        TL(7, 7, 25, 25, 3, 0xC82018); TL(25, 7, 7, 25, 3, 0xC82018);
-        TL(7, 7, 25, 25, 1.8f, 0xF04A38); TL(25, 7, 7, 25, 1.8f, 0xF04A38);
+        TL(7, 7, 25, 25, 3.2f, 0x9A1810); TL(25, 7, 7, 25, 3.2f, 0x9A1810);
+        TL(7, 7, 25, 25, 2.2f, 0xF04A38); TL(25, 7, 7, 25, 2.2f, 0xF04A38);
+        TL(7.4f, 6.8f, 24.6f, 24, 0.8f, 0xFF9A8A); TL(24.6f, 6.8f, 7.4f, 24, 0.8f, 0xFF9A8A);
         break;
+    }
+}
+
+/* arc from angle a0 to a1 (degrees, 0 = up, clockwise) */
+static void ARC(float cx, float cy, float r, float a0, float a1, float t, uint32_t c) {
+    float px = cx + r * sinf(a0 * 0.0174533f), py = cy - r * cosf(a0 * 0.0174533f);
+    for (float a = a0 + 6; a <= a1 + 0.1f; a += 6) {
+        float nx = cx + r * sinf(a * 0.0174533f), ny = cy - r * cosf(a * 0.0174533f);
+        TL(px, py, nx, ny, t, c);
+        px = nx; py = ny;
     }
 }
 
@@ -351,7 +533,8 @@ static uint32_t *render_icon(int id, int size) {
         uint32_t *buf = pass ? w : b;
         gfx_target(buf, 0, 0, R2, R2);
         fill(0, 0, R2, R2, pass ? 0xFFFFFF : 0x000000);
-        X0 = 0; Y0 = 0; SZ = R2;
+        int shadowed = id != IC_USER;
+        X0 = 0; Y0 = 0; SZ = shadowed ? R2 * 15 / 16 : R2;
         icon_raw(id);
     }
     gfx_pop(&st);
@@ -380,6 +563,32 @@ static uint32_t *render_icon(int id, int size) {
             out[y * size + x] = c;
         }
     free(b); free(w);
+    if (id != IC_USER && size >= 16) {   /* soft drop shadow from the alpha mask */
+        uint8_t *al = malloc(size * size);
+        if (al) {
+            for (int i = 0; i < size * size; i++) al[i] = out[i] >> 24;
+            int off = size >= 40 ? 2 : 1, rad = size >= 40 ? 2 : 1;
+            for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++) {
+                    int sum = 0, n = 0;
+                    for (int j = -rad; j <= rad; j++)
+                        for (int i = -rad; i <= rad; i++) {
+                            int sx = x - off + i, sy = y - off + j;
+                            if (sx >= 0 && sy >= 0 && sx < size && sy < size) sum += al[sy * size + sx];
+                            n++;
+                        }
+                    int sa = sum / n * (size >= 32 ? 70 : 55) / 255;   /* shadow alpha 0..~70 */
+                    uint32_t c = out[y * size + x];
+                    int a = c >> 24;
+                    if (a >= 255 || sa <= 0) continue;
+                    int na = a + sa * (255 - a) / 255;
+                    if (na <= 0) continue;
+                    int r = ((c >> 16) & 255) * a / na, g = ((c >> 8) & 255) * a / na, bl = (c & 255) * a / na;
+                    out[y * size + x] = ((uint32_t)na << 24) | RGB(r, g, bl);
+                }
+            free(al);
+        }
+    }
     return out;
 }
 

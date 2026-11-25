@@ -22,13 +22,16 @@ jobs:
           sh tools/fetch_linux.sh
 
       - name: Build cubexp.dol
-        run: make -j"$(nproc)"
+        run: |
+          make -j"$(nproc)"
+          test -f cubexp.dol
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: cubexp
           path: cubexp.dol
+          if-no-files-found: error
 
       - name: Publish to the "latest" release
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'

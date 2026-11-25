@@ -40,6 +40,7 @@ export INCLUDE := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
                   -I$(CURDIR)/$(BUILD) -I$(LIBOGC_INC)
 export LIBPATHS := -L$(LIBOGC_LIB) $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 
+.DEFAULT_GOAL := $(BUILD)
 .PHONY: $(BUILD) clean run linux-image
 
 # downloads the prebuilt RISC-V Linux kernel (with BusyBox) used by the Linux Terminal

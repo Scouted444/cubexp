@@ -6,8 +6,15 @@
 #include <stdlib.h>
 
 /* kernel image linked in by the build (data/linux.bin -> linux_bin); weak so builds without it still link */
+/* Use the start/end labels (incomplete arrays) rather than the 4-byte linux_bin_size
+   variable: PowerPC EABI treats small extern variables as "small data" and the
+   generated access can't reach a symbol that really lives in .rodata. */
 extern const uint8_t linux_bin[] __attribute__((weak));
-extern const uint32_t linux_bin_size __attribute__((weak));
+extern const uint8_t linux_bin_end[] __attribute__((weak));
+static uint32_t kernel_size(void) {
+    if (!linux_bin || !linux_bin_end || linux_bin_end <= linux_bin) return 0;
+    return (uint32_t)(linux_bin_end - linux_bin);
+}
 
 /* ---------------- emulator glue ---------------- */
 static uint32_t lx_ram_amt;
@@ -292,7 +299,7 @@ static const char *chips[] = { "Ctrl", "Ctrl+C", "Ctrl+D", "Tab", "Esc", "Up", "
 
 static void lx_boot(LX *d) {
     memset(d->ram, 0, lx_ram_amt);
-    memcpy(d->ram, linux_bin, linux_bin_size);
+    memcpy(d->ram, linux_bin, kernel_size());
     d->dtb_ptr = lx_ram_amt - (int)sizeof(default64mbdtb) - (int)sizeof(struct MiniRV32IMAState);
     memcpy(d->ram + d->dtb_ptr, default64mbdtb, sizeof default64mbdtb);
     uint8_t *db = d->ram + d->dtb_ptr;
@@ -519,10 +526,10 @@ void open_linux(void) {
     w->x = (SW - w->w) / 2; w->y = 4;
     lx_win = w;
     vt_reset();
-    if (!&linux_bin_size || !linux_bin || linux_bin_size == 0) { d->state = LX_NOIMAGE; return; }
+    if (kernel_size() < 65536) { d->state = LX_NOIMAGE; return; }
     static const uint32_t sizes[] = { 12u << 20, 10u << 20, 8u << 20 };
     for (unsigned i = 0; i < 3 && !d->ram; i++) {
-        if (sizes[i] < linux_bin_size + (3u << 20)) continue;
+        if (sizes[i] < kernel_size() + (3u << 20)) continue;
         d->ram = malloc(sizes[i]);
         if (d->ram) lx_ram_amt = sizes[i];
     }

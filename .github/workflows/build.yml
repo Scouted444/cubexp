@@ -25,6 +25,9 @@ jobs:
         run: |
           make -j"$(nproc)"
           test -f cubexp.dol
+          # the Linux kernel must be linked in, not left as an empty weak reference
+          $DEVKITPPC/bin/powerpc-eabi-nm cubexp.elf | grep -E " linux_bin(_end)?$"
+          $DEVKITPPC/bin/powerpc-eabi-nm cubexp.elf | grep -qE "[0-9a-f]+ [RrDd] linux_bin_end$"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4

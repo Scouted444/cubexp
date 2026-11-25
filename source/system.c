@@ -32,6 +32,23 @@ void set_custom_wallpaper(const uint32_t *img, int w, int h) {
     wallpaper_count = 7;
     cfg.wallpaper = 6;
     shell_wallpaper_dirty();
+    if (vfs_system) {   /* keep it across restarts */
+        int sz;
+        uint8_t *b = bmp_encode(img, w, h, &sz);
+        VNode *f = b ? vfs_create(vfs_system, "wallpaper.bmp") : NULL;
+        if (f) vfs_write(f, b, sz);
+        free(b);
+    }
+}
+void wallpaper_restore(void) {
+    VNode *f = vfs_lookup(NULL, "/System/wallpaper.bmp");
+    int w, h;
+    uint32_t *px = f ? bmp_decode(f->data, f->size, &w, &h) : NULL;
+    if (!px) { if (cfg.wallpaper == 6) cfg.wallpaper = 0; return; }
+    int keep = cfg.wallpaper;
+    free(custom);
+    custom = px; cust_w = w; cust_h = h; wallpaper_count = 7;
+    cfg.wallpaper = keep;
 }
 
 static uint32_t rng = 12345;
@@ -147,7 +164,7 @@ void settings_load(void) {
         char *v = eq + 1;
         v[strcspn(v, "\r\n")] = 0;
         int n = atoi(v);
-        if (!strcmp(line, "wallpaper") && n >= 0 && n < 6) cfg.wallpaper = n;
+        if (!strcmp(line, "wallpaper") && n >= 0 && n < 7) cfg.wallpaper = n;
         else if (!strcmp(line, "theme") && n >= 0 && n < 3) cfg.theme = n;
         else if (!strcmp(line, "cursor") && n >= 1 && n <= 5) cfg.cursor_speed = n;
         else if (!strcmp(line, "clock24")) cfg.clock24 = !!n;
@@ -179,7 +196,7 @@ typedef struct { float t, freq, dur, vol; int wave; } Note; /* wave 0 sine-bell,
 static void render(int id, const Note *n, int count, float total) {
     int len = (int)(total * RATE);
     float *acc = calloc(len, sizeof(float));
-    int16_t *out = malloc(len * sizeof(int16_t));
+    int16_t *out = plat_audio_alloc(len);
     if (!acc || !out) { free(acc); free(out); return; }
     uint32_t nz = 99;
     for (int k = 0; k < count; k++) {
@@ -204,6 +221,7 @@ static void render(int id, const Note *n, int count, float total) {
         out[i] = (int16_t)(v * 26000);
     }
     free(acc);
+    plat_audio_ready(out, len);
     snd[id] = out; snd_len[id] = len;
 }
 
@@ -241,5 +259,5 @@ void sound_init(void) {
 
 void sound_play(int id) {
     if (!cfg.sound || id < 0 || id >= SND_COUNT || !snd[id]) return;
-    plat_play(snd[id], snd_len[id], RATE);
+    plat_play(snd[id], snd_len[id], RATE, 200);
 }

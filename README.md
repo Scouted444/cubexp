@@ -4,47 +4,55 @@ A Windows XP-style desktop "OS" for the Nintendo GameCube. It runs on real hardw
 
 ![screens](docs/screens.png)
 
-## What's inside
+## What's inside (v1.1)
 
-- **Boot screen, login screen and welcome screen**, with an original start-up chime
-- **Luna-style desktop**: icons, a taskbar, a green Start button, a system tray with a clock and pop-up notification balloons
-- **Window manager**: drag, resize, minimize, maximize, double-click the title bar to maximize, Z to switch windows (like Alt+Tab)
-- **Start menu** with All Programs, Log Off and a Turn Off dialog that fades the screen to grey
-- **Right-click menus** on the desktop, on icons and on taskbar buttons
-- **Screensaver**: a starfield with a bouncing logo
-- **Themes**: Blue, Olive Green and Silver. **Wallpapers**: 6 built in, or use your own painting
-- **Settings saved to SD card** (SD Gecko / SD2SP2) in `/cubexp`
+- **Sharper look**: anti-aliased icons (rendered 4x and scaled down), a crisper Tahoma-style font, soft window and menu shadows
+- **Smooth motion**: windows fade in, minimize animates to the taskbar, the Start menu slides up, and menus, tooltips and balloons fade
+- **Real file system**: Local Disk (C:) with Desktop, Documents, Pictures, Music, Programs, System and Recycle Bin, all saved to the SD card
+- **Desktop**: files and shortcuts in `/Desktop` show up as icons; right-click to make folders, documents and sticky notes
+- **Taskbar**: quick launch (Show Desktop, Explorer, Terminal), tooltips, and a **Z window switcher** like Alt+Tab
+- **Start menu**: My Documents, My Pictures and My Music links, plus a two-column All Programs list
 
-### Programs
+### Programs (23)
 
 | Program | What it does |
 |---|---|
-| My Computer | Drives, controller status, SD card browser, system properties |
-| Notepad | Word-wrapping editor. Saves and opens `.txt` files on the SD card |
-| Paint | 8 tools, 28 colours, flips, invert, save/open BMP, **Set as Background** |
-| Calculator | Standard XP calculator with memory keys |
-| Command Prompt | 25+ commands (`help`, `dir`, `type`, `calc 2^10`, `color 0a`, `matrix`, `cowsay`, `tasklist`, `shutdown /r`…) |
-| Minesweeper | Beginner / Intermediate / 16x16, flags, chording, 7-segment counters |
-| Snake, Pong | D-Pad games |
-| Control Panel | Wallpaper, theme, screensaver, pointer speed, 12/24h clock, sounds, user name |
-| Task Manager | End or switch tasks, CPU and memory graphs |
-| Clock and Calendar | Analog clock and a month calendar |
-| On-Screen Keyboard | Type with the pointer, into whatever window is active |
-| Run…, Help and Support, About, Recycle Bin | |
+| **Terminal** *(new)* | A real shell (see below) |
+| **Windows Explorer** *(new)* | Browse, create, rename, cut/copy/paste and delete files; icon and details views |
+| **Solitaire** *(new)* | Klondike with drag and drop, scoring, and the bouncing-card win animation |
+| **Blocks** *(new)* | Falling-block puzzle with a ghost piece, levels and high score |
+| **Music Maker** *(new)* | Piano and 16-step sequencer with 3 sounds; saves `.song` files |
+| **Picture Viewer** *(new)* | View BMPs, flip through a folder, set as background, edit in Paint |
+| **Sticky Notes** *(new)* | Coloured notes that come back every time you log on |
+| Notepad | Open/Save dialogs, status bar, copy/paste |
+| Paint | Saves and opens BMPs; Set as Background (kept across restarts) |
+| Command Prompt | The same shell, in DOS style (`dir`, `copy`, `del`, `type`...) |
+| Minesweeper, Snake, Pong, Calculator, Control Panel, Task Manager, My Computer, Recycle Bin (restore works), Clock, On-Screen Keyboard, Run, Help | |
+
+### The terminal
+
+About 70 commands, including `ls cd pwd mkdir rm cp mv cat touch tree find grep wc head tail sort uniq echo seq xxd stat du df`, plus `ps kill free uptime neofetch cowsay fortune matrix play theme wallpaper calc date alias history` and `shutdown`.
+
+- Pipes and redirects: `ls | grep txt > list.txt`, `>>`, `<`
+- Variables `$USER`, `set NAME=x`, `$(command)` substitution, `$?`
+- Wildcards (`rm *.bak`), chaining with `;`, `&&` and `||`, and `for f in *.txt; do cat $f; done`
+- `.sh` scripts (try `sh /Documents/hello.sh`) and `/System/autorun.sh`
+- Tab completion, command history, scrollback, and tappable chips for controller users
+- Any program name opens it: `snake`, `explorer`, `notepad todo.txt`
 
 ## Controls
 
 | Button | Action |
 |---|---|
-| Control Stick | Move the mouse pointer |
-| A | Left click (double-click to open) |
-| B | Right click |
+| Control Stick | Move the pointer |
+| A / B | Click / right-click |
 | START | Start menu |
 | X | On-Screen Keyboard |
-| Z | Switch windows |
+| Z | Window switcher (press again to cycle) |
+| Y | Show desktop (Enter while typing) |
 | C-Stick | Scroll |
-| D-Pad | Arrow keys, game controls, nudge the pointer |
-| L / R / Y | Backspace / Space / Enter (when typing) |
+| D-Pad | Arrow keys and game controls |
+| L / R | Backspace / Space while typing |
 
 ## Running it
 
@@ -71,4 +79,4 @@ Script commands: `wait N`, `warp X Y`, `tap A`, `hold A`, `release A`, `type tex
 
 ## Credits
 
-The UI fonts are generated from DejaVu Sans (`tools/genfont.py`), released under the Bitstream Vera / DejaVu license. CubeXP is a fan homebrew project and is not affiliated with Microsoft or Nintendo.
+The UI fonts are generated by `tools/genfont.py` from Liberation Sans (SIL OFL) and DejaVu (Bitstream Vera license). CubeXP is a fan homebrew project and is not affiliated with Microsoft or Nintendo.

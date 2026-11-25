@@ -8,6 +8,8 @@ int main(int argc, char **argv) {
     (void)argc; (void)argv;
     plat_init();
     settings_load();
+    vfs_init();
+    { extern void wallpaper_restore(void); wallpaper_restore(); }
     shell_init();
     now_ms = plat_ms();
     shell_frame();          /* show the boot screen while sounds are synthesized */

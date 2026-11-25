@@ -5,12 +5,10 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
-#include <dirent.h>
 
 /* ---------- single line text field ---------- */
-typedef struct { char s[64]; int len, cur; } TField;
-static void tf_set(TField *t, const char *s) { strncpy(t->s, s, 63); t->s[63] = 0; t->len = t->cur = strlen(t->s); }
-static void tf_key(TField *t, int k) {
+void tf_set(TField *t, const char *s) { strncpy(t->s, s, 63); t->s[63] = 0; t->len = t->cur = strlen(t->s); }
+void tf_key(TField *t, int k) {
     if (k == K_BKSP) { if (t->cur > 0) { memmove(t->s + t->cur - 1, t->s + t->cur, t->len - t->cur + 1); t->cur--; t->len--; } }
     else if (k == K_DEL) { if (t->cur < t->len) { memmove(t->s + t->cur, t->s + t->cur + 1, t->len - t->cur); t->len--; } }
     else if (k == K_LEFT) { if (t->cur > 0) t->cur--; }
@@ -22,7 +20,7 @@ static void tf_key(TField *t, int k) {
         t->s[t->cur++] = (char)k; t->len++;
     }
 }
-static void tf_draw(TField *t, int x, int y, int w, int active) {
+void tf_draw(TField *t, int x, int y, int w, int active) {
     fill(x, y, w, 21, 0xFFFFFF);
     rect(x, y, w, 21, 0x7F9DB9);
     gfx_clip(x + 2, y, w - 4, 21);
@@ -128,72 +126,6 @@ void prompt_box(const char *title, const char *label, const char *initial, void 
     if (!osk_visible()) osk_toggle();
 }
 
-/* ---------- file picker ---------- */
-typedef struct { char names[40][40]; int n, sel, scroll; void (*cb)(const char *, int); int ctx; } PickData;
-static void pk_draw(Window *w, int x, int y, int cw, int ch) {
-    PickData *d = w->data;
-    text(&font_ui, x + 10, y + 8, "Look in:  SD card \\cubexp", 0);
-    int lx = x + 10, ly = y + 26, lw = cw - 20, lh = ch - 66;
-    ui_panel_sunken(lx, ly, lw, lh, 0xFFFFFF);
-    if (!d->n) text(&font_ui, lx + 8, ly + 8, "(no files found)", 0x808080);
-    gfx_clip(lx + 1, ly + 1, lw - 2, lh - 2);
-    for (int i = d->scroll; i < d->n; i++) {
-        int iy = ly + 2 + (i - d->scroll) * 20;
-        if (i == d->sel) fill(lx + 2, iy, lw - 4, 20, C_SEL);
-        draw_icon(IC_NOTEPAD, lx + 4, iy + 2, 16);
-        text(&font_ui, lx + 24, iy + 4, d->names[i], i == d->sel ? 0xFFFFFF : 0);
-    }
-    gfx_noclip();
-    ui_button(x + cw - 170, y + ch - 32, 75, 23, "Open", w);
-    ui_button(x + cw - 87, y + ch - 32, 75, 23, "Cancel", w);
-}
-static void pk_open(Window *w) {
-    PickData *d = w->data;
-    if (d->sel < 0 || d->sel >= d->n) return;
-    char name[40];
-    strcpy(name, d->names[d->sel]);
-    void (*cb)(const char *, int) = d->cb;
-    int ctx = d->ctx;
-    win_close(w);
-    cb(name, ctx);
-}
-static void pk_mouse(Window *w, int ev, int mx, int my) {
-    PickData *d = w->data;
-    int x, y, cw, ch;
-    win_client(w, &x, &y, &cw, &ch);
-    if (ev == EV_SCROLL) { d->scroll += my; if (d->scroll > d->n - 1) d->scroll = d->n - 1; if (d->scroll < 0) d->scroll = 0; return; }
-    if (ev != EV_DOWN && ev != EV_DBL) return;
-    if (inside(mx, my, 10, 26, cw - 20, ch - 66)) {
-        int i = d->scroll + (my - 28) / 20;
-        if (i < d->n) { d->sel = i; if (ev == EV_DBL) pk_open(w); }
-    } else if (ev == EV_DOWN && inside(mx, my, cw - 170, ch - 32, 75, 23)) pk_open(w);
-    else if (ev == EV_DOWN && inside(mx, my, cw - 87, ch - 32, 75, 23)) win_close(w);
-}
-void file_picker(const char *title, const char *ext, void (*cb)(const char *, int), int ctx) {
-    if (!plat_storage_ok()) {
-        msgbox(title, "No SD card was found.\n\nOn a real GameCube use an SD Gecko or SD2SP2.\nIn Dolphin, enable an SD card adapter in Slot A/B\n(Config > GameCube).", IC_WARN);
-        return;
-    }
-    PickData *d = calloc(1, sizeof *d);
-    if (!d) return;
-    d->cb = cb; d->ctx = ctx; d->sel = -1;
-    DIR *dir = opendir(plat_storage_path());
-    if (dir) {
-        struct dirent *e;
-        while ((e = readdir(dir)) && d->n < 40) {
-            const char *dot = strrchr(e->d_name, '.');
-            if (e->d_name[0] == '.' || !dot || strcasecmp(dot, ext)) continue;
-            strncpy(d->names[d->n++], e->d_name, 39);
-        }
-        closedir(dir);
-    }
-    Window *w = win_new(title, IC_FOLDER, 320, 240);
-    if (!w) { free(d); return; }
-    w->app = APP_MSGBOX; w->no_max = 1; w->data = d;
-    w->draw = pk_draw; w->mouse = pk_mouse;
-    win_center(w);
-}
-
 /* ---------- Run ---------- */
 typedef struct { TField f; } RunData;
 static void run_draw(Window *w, int x, int y, int cw, int ch) {
@@ -287,37 +219,39 @@ static const char *help_lines[] = {
     "",
     "#Controller",
     "Control Stick ........ move the mouse pointer",
-    "A .................... left click (double-click to open)",
-    "B .................... right click (context menus)",
-    "START ................ open / close the Start menu",
-    "X .................... show / hide On-Screen Keyboard",
-    "Z .................... switch between windows",
-    "C-Stick .............. scroll the window under the pointer",
-    "D-Pad ................ arrow keys / game controls / nudge",
+    "A .................... click (double-click to open)",
+    "B .................... right-click (menus)",
+    "START ................ Start menu",
+    "X .................... On-Screen Keyboard",
+    "Z .................... window switcher (press again to cycle)",
+    "Y .................... show the desktop (Enter when typing)",
+    "C-Stick .............. scroll",
+    "D-Pad ................ arrow keys / games / nudge pointer",
+    "L / R ................ Backspace / Space when typing",
     "",
-    "#Typing (when a text window is active)",
-    "L = Backspace    R = Space    Y = Enter",
-    "Click keys on the On-Screen Keyboard to type letters.",
+    "#Files",
+    "Everything lives on Local Disk (C:), which CubeXP saves",
+    "to your SD card. Open Windows Explorer from the taskbar",
+    "or My Documents. Right-click files to rename, delete,",
+    "copy and paste. Deleted files go to the Recycle Bin.",
+    "Files you put in /Desktop show up on the desktop.",
     "",
-    "#Windows",
-    "Drag a title bar to move a window. Double-click it",
-    "to maximize. Drag the bottom-right corner to resize.",
-    "Right-click taskbar buttons for more options.",
-    "",
-    "#Saving",
-    "Notes, paintings and settings save to an SD card",
-    "(SD Gecko or SD2SP2) in the folder /cubexp.",
-    "In Dolphin: Config > GameCube > SP1 or Slot A/B =",
-    "SD card adapter.",
-    "",
-    "#Command Prompt",
-    "Type 'help' for a list of commands. Every program",
-    "can be started by name, e.g. 'snake' or 'mspaint'.",
+    "#Terminal",
+    "A real shell: ls, cd, mkdir, rm, cp, mv, cat, grep,",
+    "find, wc, sort, head, tail, echo > file, pipes (|),",
+    "$VARIABLES, $(commands), *.wildcards, for loops and",
+    ".sh scripts. Tab completes names; Up/Down = history.",
+    "Try: neofetch, cowsay hi, tree /, play C4 E4 G4",
     "",
     "#Games",
-    "Minesweeper: A reveals, B places a flag. Click a",
-    "number to clear around it when flags match.",
-    "Snake and Pong: use the D-Pad.",
+    "Solitaire: drag cards; double-click sends a card home.",
+    "Minesweeper: A reveals, B flags.",
+    "Blocks: D-Pad moves, Up rotates, B drops.",
+    "Snake, Pong: D-Pad.",
+    "",
+    "#Saving",
+    "Real GameCube: SD Gecko or SD2SP2 adapter.",
+    "Dolphin: Config > GameCube > Slot A = SD Card adapter.",
 };
 #define NHELP ((int)(sizeof help_lines / sizeof help_lines[0]))
 typedef struct { int scroll; } HelpData;
@@ -355,41 +289,82 @@ void open_help(void) {
 }
 
 /* ---------- Recycle Bin ---------- */
-static int recycle_full = 1;
+typedef struct { int sel, scroll; } RB;
+static VNode *rb_item(int idx) { VNode *c = vfs_recycle->child; while (c && idx--) c = c->next; return c; }
 static void rb_draw(Window *w, int x, int y, int cw, int ch) {
-    (void)w;
+    RB *d = w->data;
     grad_v(x, y, 170, ch, 0x7BA2E7, 0x6375D6);
-    round_fill(x + 10, y + 10, 150, 80, 4, 0xD6DFF7);
+    round_fill(x + 10, y + 10, 150, 86, 4, 0xD6DFF7);
     grad_h(x + 10, y + 10, 150, 22, 0xFFFFFF, 0xC6D3F7);
     text(&font_bold, x + 18, y + 15, "Recycle Bin Tasks", 0x215DC6);
-    draw_icon(IC_RECYCLE, x + 16, y + 40, 16);
-    int hot = inside(mouse_x, mouse_y, x + 36, y + 40, 120, 16);
-    text(&font_ui, x + 36, y + 42, "Empty Recycle Bin", hot ? 0x428EFF : 0x215DC6);
-    if (hot) hline(x + 36, y + 55, text_w(&font_ui, "Empty Recycle Bin"), 0x428EFF);
-    draw_icon(IC_FOLDER, x + 16, y + 62, 16);
-    text(&font_ui, x + 36, y + 64, "Restore all items", 0x215DC6);
+    static const char *t[] = { "Empty Recycle Bin", "Restore this item", "Restore all items" };
+    static const int ic[] = { IC_RECYCLE, IC_BACK, IC_FOLDER };
+    for (int i = 0; i < 3; i++) {
+        int hot = inside(mouse_x, mouse_y, x + 16, y + 38 + i * 19, 140, 17);
+        draw_icon(ic[i], x + 16, y + 38 + i * 19, 16);
+        text(&font_ui, x + 36, y + 40 + i * 19, t[i], hot ? 0x428EFF : 0x215DC6);
+        if (hot) hline(x + 36, y + 53 + i * 19, text_w(&font_ui, t[i]), 0x428EFF);
+    }
     fill(x + 170, y, cw - 170, ch, 0xFFFFFF);
-    if (recycle_full) {
-        static const char *junk[] = { "homework_final_v2.txt", "old_screenshot.bmp", "secret_plans.txt" };
-        for (int i = 0; i < 3; i++) {
-            draw_icon(i == 1 ? IC_PAINT : IC_NOTEPAD, x + 186, y + 14 + i * 40, 32);
-            text(&font_ui, x + 226, y + 24 + i * 40, junk[i], 0);
-        }
-    } else text(&font_ui, x + 190, y + 20, "The Recycle Bin is empty.", 0x808080);
+    fill(x + 170, y, cw - 170, 20, C_FACE);
+    hline(x + 170, y + 20, cw - 170, C_SHADOW);
+    text(&font_ui, x + 178, y + 4, "Name", 0);
+    text(&font_ui, x + 330, y + 4, "Original Location", 0);
+    if (!vfs_recycle->child) { text(&font_ui, x + 186, y + 34, "The Recycle Bin is empty.", 0x808080); return; }
+    int i = 0;
+    gfx_clip(x + 170, y + 21, cw - 170, ch - 21);
+    for (VNode *n = vfs_recycle->child; n; n = n->next, i++) {
+        int iy = y + 24 + (i - d->scroll) * 22;
+        if (i < d->scroll) continue;
+        if (i == d->sel) fill(x + 172, iy, cw - 174, 22, C_SEL);
+        draw_icon(vfs_icon(n), x + 176, iy + 3, 16);
+        uint32_t fg = i == d->sel ? 0xFFFFFF : 0;
+        gfx_clip(x + 170, y + 21, 150, ch - 21);
+        text(&font_ui, x + 198, iy + 5, n->name, fg);
+        gfx_clip(x + 170, y + 21, cw - 170, ch - 21);
+        char loc[96];
+        snprintf(loc, sizeof loc, "%s", n->orig[0] ? n->orig : "?");
+        char *sl = strrchr(loc, '/');
+        if (sl && sl != loc) *sl = 0; else if (sl) strcpy(loc, "/");
+        text(&font_ui, x + 330, iy + 5, loc, fg);
+    }
+    gfx_noclip();
 }
 static void rb_mouse(Window *w, int ev, int mx, int my) {
-    (void)w;
-    if (ev == EV_DOWN && inside(mx, my, 16, 40, 150, 16) && recycle_full) {
-        recycle_full = 0; sound_play(SND_EXPLODE);
-        notify("Recycle Bin", "3 items were permanently deleted.");
-    } else if (ev == EV_DOWN && inside(mx, my, 16, 62, 150, 16)) {
-        notify("Recycle Bin", recycle_full ? "Nothing to restore - it's all junk anyway." : "The Recycle Bin is empty.");
+    RB *d = w->data;
+    if (ev == EV_SCROLL) { d->scroll += my; if (d->scroll < 0) d->scroll = 0; return; }
+    if (ev != EV_DOWN && ev != EV_DBL && ev != EV_RDOWN) return;
+    if (mx < 170) {
+        if (ev != EV_DOWN) return;
+        int t = (my - 38) / 19;
+        if (my < 38 || t > 2) return;
+        if (t == 0 && vfs_recycle->child) {
+            int n = vfs_count(vfs_recycle);
+            while (vfs_recycle->child) vfs_remove(vfs_recycle->child, 0);
+            sound_play(SND_EXPLODE);
+            char m[64]; snprintf(m, sizeof m, "%d item%s permanently deleted.", n, n == 1 ? " was" : "s were");
+            notify("Recycle Bin", m);
+            d->sel = -1;
+        } else if (t == 1) { VNode *n = rb_item(d->sel); if (n) { vfs_restore(n); d->sel = -1; } }
+        else if (t == 2) { while (vfs_recycle->child) vfs_restore(vfs_recycle->child); d->sel = -1; }
+        return;
+    }
+    if (my < 22) return;
+    int i = d->scroll + (my - 24) / 22;
+    d->sel = rb_item(i) ? i : -1;
+    if (ev == EV_DBL && d->sel >= 0) {
+        VNode *n = rb_item(d->sel);
+        char m[200];
+        snprintf(m, sizeof m, "%s\n\nDeleted from: %s\nSize: %ld bytes\n\nUse 'Restore this item' to put it back.", n->name, n->orig, vfs_total_size(n));
+        msgbox("Properties", m, vfs_icon(n));
     }
 }
 void open_recycle(void) {
-    Window *w = win_new("Recycle Bin", IC_RECYCLE, 430, 260);
+    Window *w = win_new("Recycle Bin", IC_RECYCLE, 470, 280);
     if (!w) return;
-    w->app = APP_RECYCLE; w->resizable = 1;
+    RB *d = calloc(1, sizeof(RB));
+    d->sel = -1;
+    w->app = APP_RECYCLE; w->resizable = 1; w->data = d;
     w->draw = rb_draw; w->mouse = rb_mouse;
 }
 

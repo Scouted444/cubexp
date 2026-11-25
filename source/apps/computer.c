@@ -24,7 +24,7 @@ static void bar(int x, int y, int w, int pct) {
     fill(x + 1, y + 1, (w - 2) * pct / 100, 6, 0x2A6AD8);
 }
 
-static void load_files(MC *d) {
+__attribute__((unused)) static void load_files(MC *d) {
     d->nfiles = 0;
     DIR *dir = opendir(plat_storage_path());
     if (!dir) return;
@@ -38,7 +38,7 @@ static void load_files(MC *d) {
 
 static void mc_draw(Window *w, int x, int y, int cw, int ch) {
     MC *d = w->data;
-    static const char *tasks[] = { "View system info", "Change a setting", "Open SD card" };
+    static const char *tasks[] = { "View system info", "Change a setting", "Browse Local Disk" };
     task_pane(x, y, ch, "System Tasks", tasks, 3);
     int cx = x + 160, cwid = cw - 160;
     fill(cx, y, cwid, ch, 0xFFFFFF);
@@ -50,8 +50,11 @@ static void mc_draw(Window *w, int x, int y, int cw, int ch) {
         struct { int icon; const char *name; int pct; const char *sub; } dr[3];
         size_t fr = plat_mem_free(), tot = plat_mem_total();
         int used = fr > tot ? 0 : (int)((tot - fr) * 100 / tot);
-        dr[0].icon = IC_DRIVE; dr[0].name = "Main Memory (C:)"; dr[0].pct = used; dr[0].sub = "24 MB 1T-SRAM";
-        dr[1].icon = IC_DRIVE; dr[1].name = plat_storage_ok() ? "SD Card (D:)" : "SD Card (D:) - empty"; dr[1].pct = plat_storage_ok() ? 20 : 0; dr[1].sub = plat_storage_ok() ? plat_storage_name() : "Insert SD Gecko / SD2SP2";
+        (void)used;
+        static char sub0[48];
+        snprintf(sub0, sizeof sub0, "%ld KB used of 8 MB", vfs_total_size(vfs_root) / 1024);
+        dr[0].icon = IC_DRIVE; dr[0].name = "Local Disk (C:)"; dr[0].pct = (int)(vfs_total_size(vfs_root) * 100 / (8 * 1024 * 1024)) + 1; dr[0].sub = sub0;
+        dr[1].icon = IC_SDCARD; dr[1].name = plat_storage_ok() ? "SD Card (D:)" : "SD Card (D:) - none"; dr[1].pct = -1; dr[1].sub = plat_storage_ok() ? "Saving C: to /cubexp" : "Nothing is saved at power off";
         dr[2].icon = IC_DISC; dr[2].name = "DVD Drive (E:)"; dr[2].pct = -1; dr[2].sub = "Mini disc drive";
         for (int i = 0; i < 3; i++) {
             int ix = cx + 14 + (i % 2) * 200, iy = y + 36 + (i / 2) * 56;
@@ -120,7 +123,7 @@ static void mc_mouse(Window *w, int ev, int mx, int my) {
         if (inside(mx, my, 14, 38 + i * 20, 136, 18) && ev == EV_DOWN) {
             if (i == 0) { d->view = 2; snprintf(w->title, sizeof w->title, "System Properties"); }
             else if (i == 1) app_launch(APP_CONTROL);
-            else { d->view = 1; load_files(d); snprintf(w->title, sizeof w->title, "SD Card (D:)"); }
+            else explorer_open_path("/");
             d->sel = -1;
             return;
         }
@@ -132,8 +135,8 @@ static void mc_mouse(Window *w, int ev, int mx, int my) {
             if (inside(mx, my, ix - 2, iy - 2, 190, 52)) {
                 d->sel = i;
                 if (ev == EV_DBL) {
-                    if (i == 0) { d->view = 2; strcpy(w->title, "System Properties"); }
-                    else if (i == 1) { d->view = 1; load_files(d); strcpy(w->title, "SD Card (D:)"); d->sel = -1; }
+                    if (i == 0) explorer_open_path("/");
+                    else if (i == 1) msgbox("SD Card (D:)", plat_storage_ok() ? "Your SD card holds CubeXP's disk image\n(/cubexp/disk.cfs) and settings." : "No SD card adapter was found.\nIn Dolphin: Config > GameCube > Slot A = SD Card.", IC_SDCARD);
                     else msgbox("DVD Drive (E:)", "Please insert a disc into drive E:.\n\n(CubeXP is already running from it... probably.)", IC_DISC);
                 }
                 return;

@@ -18,6 +18,7 @@ typedef struct {
     uint32_t px[CW * CH];
     int tool, size, drawing, sx, sy, lx, ly, count;
     uint32_t fg, bg, cur_col;
+    char path[160];
 } Paint;
 
 static const char *pt_menu[] = { "File", "Image", "Help" };
@@ -161,52 +162,43 @@ static Window *win_of(int ctx) {
     return (w->used && w->app == APP_PAINT && w->gen == (ctx >> 8)) ? w : NULL;
 }
 
-static void put32(FILE *f, uint32_t v) { fputc(v & 255, f); fputc((v >> 8) & 255, f); fputc((v >> 16) & 255, f); fputc(v >> 24, f); }
-static void put16(FILE *f, int v) { fputc(v & 255, f); fputc((v >> 8) & 255, f); }
-static void save_bmp(const char *name, int ctx) {
-    Window *w = win_of(ctx);
-    if (!w || !*name) return;
+static void pt_title(Window *w) {
     Paint *d = w->data;
-    if (!plat_storage_ok()) { msgbox("Paint", "No SD card found - can't save.", IC_WARN); return; }
-    char nm[40], p[96];
-    strncpy(nm, name, 35); nm[35] = 0;
-    if (!strchr(nm, '.')) strcat(nm, ".bmp");
-    snprintf(p, sizeof p, "%s/%s", plat_storage_path(), nm);
-    FILE *f = fopen(p, "wb");
-    if (!f) { msgbox("Paint", "Could not write the file.", IC_WARN); return; }
-    int row = CW * 3, size = 54 + row * CH;
-    fputc('B', f); fputc('M', f); put32(f, size); put32(f, 0); put32(f, 54);
-    put32(f, 40); put32(f, CW); put32(f, CH); put16(f, 1); put16(f, 24); put32(f, 0); put32(f, row * CH);
-    put32(f, 2835); put32(f, 2835); put32(f, 0); put32(f, 0);
-    for (int y = CH - 1; y >= 0; y--)
-        for (int x = 0; x < CW; x++) { uint32_t c = d->px[y * CW + x]; fputc(c & 255, f); fputc((c >> 8) & 255, f); fputc((c >> 16) & 255, f); }
-    fclose(f);
-    char m[80];
-    snprintf(m, sizeof m, "Saved %s to the SD card.", nm);
-    notify("Paint", m);
+    const char *nm = d->path[0] ? strrchr(d->path, '/') + 1 : "untitled";
+    snprintf(w->title, sizeof w->title, "%.30s - Paint", nm);
 }
-static void load_bmp(const char *name, int ctx) {
+static void save_bmp(const char *path, int ctx) {
     Window *w = win_of(ctx);
     if (!w) return;
     Paint *d = w->data;
-    char p[96];
-    snprintf(p, sizeof p, "%s/%s", plat_storage_path(), name);
-    FILE *f = fopen(p, "rb");
-    unsigned char h[54];
-    if (!f || fread(h, 1, 54, f) != 54 || h[0] != 'B' || h[28] != 24) { if (f) fclose(f); msgbox("Paint", "Only 24-bit BMP files can be opened.", IC_WARN); return; }
-    int bw = h[18] | h[19] << 8 | h[20] << 16 | h[21] << 24, bh = h[22] | h[23] << 8 | h[24] << 16 | h[25] << 24;
-    int off = h[10] | h[11] << 8 | h[12] << 16 | h[13] << 24;
-    int row = (bw * 3 + 3) & ~3;
-    unsigned char *line = malloc(row);
+    int sz;
+    uint8_t *bmp = bmp_encode(d->px, CW, CH, &sz);
+    VNode *f = bmp ? vfs_create(NULL, path) : NULL;
+    if (!f || !vfs_write(f, bmp, sz)) { free(bmp); msgbox("Paint", "The picture could not be saved.", IC_WARN); return; }
+    free(bmp);
+    vfs_path(f, d->path, sizeof d->path);
+    pt_title(w);
+    char m[200];
+    snprintf(m, sizeof m, "Saved to %s", d->path);
+    notify("Paint", m);
+}
+static int load_into(Paint *d, const char *path) {
+    VNode *f = vfs_lookup(NULL, path);
+    int bw, bh;
+    uint32_t *px = f && !f->dir ? bmp_decode(f->data, f->size, &bw, &bh) : NULL;
+    if (!px) return 0;
     for (int i = 0; i < CW * CH; i++) d->px[i] = 0xFFFFFF;
-    for (int y = 0; y < bh && line; y++) {
-        fseek(f, off + (long)(bh - 1 - y) * row, SEEK_SET);
-        if (fread(line, 1, row, f) != (size_t)row) break;
-        if (y >= CH) continue;
-        for (int x = 0; x < bw && x < CW; x++) d->px[y * CW + x] = RGB(line[x * 3 + 2], line[x * 3 + 1], line[x * 3]);
-    }
-    free(line);
-    fclose(f);
+    for (int y = 0; y < bh && y < CH; y++)
+        for (int x = 0; x < bw && x < CW; x++) d->px[y * CW + x] = px[y * bw + x];
+    free(px);
+    vfs_path(f, d->path, sizeof d->path);
+    return 1;
+}
+static void load_bmp(const char *path, int ctx) {
+    Window *w = win_of(ctx);
+    if (!w) return;
+    if (!load_into(w->data, path)) msgbox("Paint", "Only 24-bit BMP pictures can be opened.", IC_WARN);
+    pt_title(w);
 }
 
 static void pt_menu_cb(int id, int ctx) {
@@ -214,15 +206,16 @@ static void pt_menu_cb(int id, int ctx) {
     if (!w) return;
     Paint *d = w->data;
     switch (id) {
-    case 1: for (int i = 0; i < CW * CH; i++) d->px[i] = 0xFFFFFF; break;
-    case 2: file_picker("Open", ".bmp", load_bmp, ctx); break;
-    case 3: prompt_box("Save As", "File name:", "painting.bmp", save_bmp, ctx); break;
+    case 1: for (int i = 0; i < CW * CH; i++) d->px[i] = 0xFFFFFF; d->path[0] = 0; pt_title(w); break;
+    case 2: file_dialog(FD_OPEN, "Open", ".bmp", "/Pictures", NULL, load_bmp, ctx); break;
+    case 3: if (d->path[0]) { save_bmp(d->path, ctx); break; } /* fall through */
+    case 10: file_dialog(FD_SAVE, "Save As", ".bmp", "/Pictures", d->path[0] ? strrchr(d->path, '/') + 1 : "Painting.bmp", save_bmp, ctx); break;
     case 4: set_custom_wallpaper(d->px, CW, CH); settings_save(); notify("Paint", "Your painting is now the desktop background."); break;
     case 5: win_close(w); break;
     case 6: for (int i = 0; i < CW * CH; i++) d->px[i] ^= 0xFFFFFF; break;
     case 7: for (int y = 0; y < CH; y++) for (int x = 0; x < CW / 2; x++) { uint32_t t = d->px[y * CW + x]; d->px[y * CW + x] = d->px[y * CW + CW - 1 - x]; d->px[y * CW + CW - 1 - x] = t; } break;
     case 8: for (int y = 0; y < CH / 2; y++) for (int x = 0; x < CW; x++) { uint32_t t = d->px[y * CW + x]; d->px[y * CW + x] = d->px[(CH - 1 - y) * CW + x]; d->px[(CH - 1 - y) * CW + x] = t; } break;
-    case 9: msgbox("About Paint", "CubeXP Paint\n\nCanvas: 400 x 260. Saves 24-bit BMP files\nto the SD card. Try Image > Set as Background!", IC_PAINT); break;
+    case 9: msgbox("About Paint", "CubeXP Paint\n\nCanvas: 400 x 260. Saves 24-bit BMP pictures\nto Local Disk (C:). Try Image > Set as Background!", IC_PAINT); break;
     }
 }
 
@@ -237,7 +230,7 @@ static void pt_mouse(Window *w, int ev, int mx, int my) {
         if (m >= 0 && ev == EV_DOWN) {
             int px = x + 4;
             for (int i = 0; i < m; i++) px += text_w(&font_ui, pt_menu[i]) + 12;
-            if (m == 0) { static const MItem it[] = { { "New", 1 }, { "Open...", 2 }, { "Save As...", 3 }, { NULL, 0 }, { "Exit", 5 } }; shell_popup(px - 3, y + 19, it, 5, pt_menu_cb, ctx_of(w)); }
+            if (m == 0) { static const MItem it[] = { { "New", 1 }, { "Open...", 2 }, { "Save", 3 }, { "Save As...", 10 }, { NULL, 0 }, { "Exit", 5 } }; shell_popup(px - 3, y + 19, it, 6, pt_menu_cb, ctx_of(w)); }
             else if (m == 1) { static const MItem it[] = { { "Set as Background", 4 }, { NULL, 0 }, { "Invert Colors", 6 }, { "Flip Horizontal", 7 }, { "Flip Vertical", 8 }, { NULL, 0 }, { "Clear Image", 1 } }; shell_popup(px - 3, y + 19, it, 7, pt_menu_cb, ctx_of(w)); }
             else { static const MItem it[] = { { "About Paint", 9 } }; shell_popup(px - 3, y + 19, it, 1, pt_menu_cb, ctx_of(w)); }
             return;
@@ -292,4 +285,12 @@ void open_paint(void) {
     w->app = APP_PAINT; w->data = d; w->no_max = 1;
     w->draw = pt_draw; w->mouse = pt_mouse; w->tick = pt_tick;
     w->x = 70; w->y = 20;
+    pt_title(w);
+}
+void paint_open_file(const char *path) {
+    open_paint();
+    Window *w = focus;
+    if (!w || w->app != APP_PAINT) return;
+    if (!load_into(w->data, path)) msgbox("Paint", "Only 24-bit BMP pictures can be opened.", IC_WARN);
+    pt_title(w);
 }

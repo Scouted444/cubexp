@@ -19,10 +19,6 @@ static int storage;
 static char storage_path[32] = "sd:/cubexp";
 static const char *storage_name = "None";
 
-#define SND_SLOTS 4
-#define SND_MAX   (48000 * 2)
-static int16_t *sndbuf[SND_SLOTS];
-static int sndslot;
 
 void plat_init(void) {
     VIDEO_Init();
@@ -41,7 +37,6 @@ void plat_init(void) {
 
     ASND_Init();
     ASND_Pause(0);
-    for (int i = 0; i < SND_SLOTS; i++) sndbuf[i] = memalign(32, SND_MAX * 2);
 
     /* SD Gecko / SD2SP2 if present; harmless if not */
     static const char *devs[] = { "sd", "carda", "cardb", "sp2" };
@@ -121,18 +116,21 @@ void plat_poll(PadState p[4]) {
 
 uint64_t plat_ms(void) { return ticks_to_millisecs(gettime()); }
 
-void plat_play(const int16_t *pcm, int samples, int rate) {
-    if (samples > SND_MAX) samples = SND_MAX;
-    int16_t *b = sndbuf[sndslot];
-    sndslot = (sndslot + 1) % SND_SLOTS;
-    int bytes = (samples * 2 + 31) & ~31;
-    memcpy(b, pcm, samples * 2);
-    memset((char *)b + samples * 2, 0, bytes - samples * 2);
-    DCFlushRange(b, bytes);
-    s32 v = ASND_GetFirstUnusedVoice();
-    if (v < 0) return;
-    ASND_SetVoice(v, VOICE_MONO_16BIT, rate, 0, b, bytes, 200, 200, NULL);
+int16_t *plat_audio_alloc(int samples) {
+    int n = (samples + 15) & ~15;
+    int16_t *p = memalign(32, n * 2);
+    if (p) memset(p, 0, n * 2);
+    return p;
 }
+void plat_audio_ready(int16_t *pcm, int samples) { DCFlushRange(pcm, ((samples + 15) & ~15) * 2); }
+
+void plat_play(const int16_t *pcm, int samples, int rate, int vol) {
+    s32 v = ASND_GetFirstUnusedVoice();
+    if (v < 0 || !pcm) return;
+    int bytes = ((samples + 15) & ~15) * 2;
+    ASND_SetVoice(v, VOICE_MONO_16BIT, rate, 0, (void *)pcm, bytes, vol, vol, NULL);
+}
+void plat_stop_all(void) { for (int i = 0; i < 16; i++) ASND_StopVoice(i); }
 
 int plat_storage_ok(void) { return storage; }
 const char *plat_storage_path(void) { return storage_path; }

@@ -8,7 +8,7 @@
 typedef struct { uint8_t w, h; int8_t xo, yo; uint8_t adv; uint32_t off; } Glyph;
 typedef struct { int height, ascent; const Glyph *g; const unsigned char *px; } Font;
 
-extern const Font font_ui, font_bold, font_mono, font_title, font_big, font_huge, font_start;
+extern const Font font_ui, font_bold, font_mono, font_title, font_big, font_huge, font_start, font_small;
 
 #define RGB(r,g,b) ((uint32_t)(((r)<<16)|((g)<<8)|(b)))
 #define C_WHITE  0xFFFFFF
@@ -20,6 +20,16 @@ extern const Font font_ui, font_bold, font_mono, font_title, font_big, font_huge
 
 extern uint32_t fb[SW * SH];
 
+void gfx_target(uint32_t *buf, int x, int y, int w, int h);
+void gfx_target_screen(void);
+typedef struct { uint32_t *b; int x, y, w, h, c[4]; } GfxState;
+void gfx_push(GfxState *s);
+void gfx_pop(const GfxState *s);
+void layer_begin(int x, int y, int w, int h);
+void layer_end(int alpha);
+void blit_argb(const uint32_t *src, int w, int h, int x, int y, int alpha);
+void shadow_rect(int x, int y, int w, int h, int r, int strength);
+void round_fill_a(int x, int y, int w, int h, int r, uint32_t c, int a);
 void gfx_clip(int x, int y, int w, int h);
 void gfx_noclip(void);
 void gfx_getclip(int *x, int *y, int *w, int *h);
@@ -59,9 +69,14 @@ enum {
     IC_COMPUTER, IC_NOTEPAD, IC_CALC, IC_PAINT, IC_MINES, IC_CMD, IC_CONTROL,
     IC_TASKMGR, IC_SNAKE, IC_CLOCK, IC_RECYCLE, IC_HELP, IC_FOLDER, IC_LOGO,
     IC_DRIVE, IC_PAD, IC_POWER, IC_RESTART, IC_LOGOFF, IC_RUN, IC_KEYBOARD,
-    IC_USER, IC_DISC, IC_SOUND, IC_INFO, IC_WARN, IC_COUNT
+    IC_USER, IC_DISC, IC_SOUND, IC_INFO, IC_WARN,
+    IC_RECYCLE_FULL, IC_EXPLORER, IC_TERMINAL, IC_SOLITAIRE, IC_BLOCKS, IC_VIEWER,
+    IC_MUSIC, IC_STICKY, IC_FILE, IC_TEXTFILE, IC_IMAGEFILE, IC_SONGFILE, IC_SCRIPT,
+    IC_DOCS, IC_PICS, IC_MUSICF, IC_DESKTOP, IC_SHOWDESK, IC_SDCARD, IC_ERROR,
+    IC_UP, IC_NEWFOLDER, IC_DELETE, IC_BACK, IC_APPFILE, IC_COUNT
 };
 void draw_icon(int id, int x, int y, int size);
+void draw_icon_a(int id, int x, int y, int size, int alpha);
 void draw_cursor(int x, int y, int busy);
 
 #endif

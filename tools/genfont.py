@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
-"""Generates source/font_data.c — anti-aliased bitmap fonts (ASCII 32..126)
-from DejaVu fonts (Bitstream Vera / DejaVu license, free to embed)."""
+"""Generates source/font_data.c - anti-aliased bitmap fonts (ASCII 32..126)
+from Liberation Sans (SIL OFL) and DejaVu (Bitstream Vera license)."""
 from PIL import Image, ImageDraw, ImageFont
 import sys, os
 
 D = "/usr/share/fonts/truetype/dejavu/"
+L = "/usr/share/fonts/truetype/liberation/"
 FONTS = [
-    ("font_ui",    D + "DejaVuSans.ttf",              11),
-    ("font_bold",  D + "DejaVuSans-Bold.ttf",         11),
+    ("font_ui",    L + "LiberationSans-Regular.ttf",  12),
+    ("font_bold",  L + "LiberationSans-Bold.ttf",     12),
     ("font_mono",  D + "DejaVuSansMono.ttf",          11),
-    ("font_title", D + "DejaVuSans-Bold.ttf",         13),
-    ("font_big",   D + "DejaVuSans-Bold.ttf",         22),
+    ("font_title", L + "LiberationSans-Bold.ttf",     13),
+    ("font_big",   L + "LiberationSans-Bold.ttf",     20),
+    ("font_small", L + "LiberationSans-Regular.ttf",  10),
     ("font_start", D + "DejaVuSans-BoldOblique.ttf",  17),
     ("font_huge",  D + "DejaVuSans-BoldOblique.ttf",  36),
 ]
@@ -33,7 +35,7 @@ for name, path, size in FONTS:
         im = Image.new("L", (w, h), 0)
         ImageDraw.Draw(im).text((-bbox[0], -bbox[1]), ch, font=f, fill=255)
         off = len(data)
-        data.extend(im.tobytes())
+        data.extend(min(255, int(255 * ((b / 255.0) ** 0.75) + 0.5)) for b in im.tobytes())
         glyphs.append((w, h, bbox[0], bbox[1], adv, off))
     out.append(f'static const unsigned char {name}_px[{len(data)}] = {{')
     for i in range(0, len(data), 24):

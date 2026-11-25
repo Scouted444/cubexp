@@ -36,7 +36,7 @@ Window *win_new(const char *title, int icon, int cw, int ch) {
         if (w->x < 0) w->x = 0;
         if (w->y < 0) w->y = 0;
         w->min_w = 160; w->min_h = 90;
-        w->opened = now_ms;
+        w->opened = now_ms; w->fade_t = now_ms;
         zorder[nz++] = i;
         win_focus(w);
         return w;
@@ -70,13 +70,41 @@ void win_close(Window *w) {
 
 void win_focus(Window *w) {
     if (!w) { focus = NULL; return; }
+    if (w->minimized) w->fade_t = now_ms;
     w->minimized = 0;
     z_remove(widx(w));
     zorder[nz++] = widx(w);
     if (!w->nofocus) focus = w;
 }
 
+/* "zoom rectangle" animations (minimize to the taskbar) */
+typedef struct { int x0, y0, w0, h0, x1, y1, w1, h1; uint64_t t; } ZoomAnim;
+static ZoomAnim zooms[4];
+static void zoom_add(int x0, int y0, int w0, int h0, int x1, int y1, int w1, int h1) {
+    for (int i = 0; i < 4; i++) if (!zooms[i].t || now_ms - zooms[i].t > 260) {
+        zooms[i] = (ZoomAnim){ x0, y0, w0, h0, x1, y1, w1, h1, now_ms };
+        return;
+    }
+}
+void wm_draw_zooms(void) {
+    for (int i = 0; i < 4; i++) {
+        ZoomAnim *z = &zooms[i];
+        if (!z->t) continue;
+        int el = (int)(now_ms - z->t);
+        if (el > 220) { z->t = 0; continue; }
+        for (int k = 0; k < 3; k++) {
+            int t = el * 256 / 220 - k * 30;
+            if (t < 0) continue;
+            int x = z->x0 + (z->x1 - z->x0) * t / 256, y = z->y0 + (z->y1 - z->y0) * t / 256;
+            int ww = z->w0 + (z->w1 - z->w0) * t / 256, hh = z->h0 + (z->h1 - z->h0) * t / 256;
+            fill_a(x, y, ww, 18, TH->t2, 150 - k * 40);
+            rect(x, y, ww, hh, TH->frame);
+        }
+    }
+}
 void win_minimize(Window *w) {
+    int tx, ty, tw, th;
+    if (!w->minimized && shell_taskbar_rect(w, &tx, &ty, &tw, &th)) zoom_add(w->x, w->y, w->w, w->h, tx, ty, tw, th);
     w->minimized = 1;
     if (focus == w) focus = top_window();
 }
@@ -207,6 +235,11 @@ void wm_draw(void) {
         Window *w = &wins[order[k]];
         int cx, cy, cw, ch;
         win_client(w, &cx, &cy, &cw, &ch);
+        int fade = (int)(now_ms - w->fade_t);
+        int fading = fade < 170;
+        if (!w->maximized && !fading) shadow_rect(w->x, w->y, w->w, w->h, 5, 110);
+        if (fading) layer_begin(w->x - 6, w->y - 6, w->w + 14, w->h + 14);
+        if (fading && !w->maximized) shadow_rect(w->x, w->y, w->w, w->h, 5, 110);
         draw_frame(w, w == focus || (w->nofocus));
         gfx_clip(cx, cy, cw, ch);
         fill(cx, cy, cw, ch, C_FACE);
@@ -219,6 +252,7 @@ void wm_draw(void) {
                     fill(cx + cw - 4 - (i - j) * 4 - 2, cy + ch - 4 - j * 4 - 2, 2, 2, C_SHADOW);
                 }
         }
+        if (fading) layer_end(40 + fade * 216 / 170);
     }
 }
 

@@ -4,10 +4,11 @@
 #include "gfx.h"
 #include <strings.h>
 #include "platform.h"
+#include "vfs.h"
 
 #define OS_NAME    "CubeXP"
 #define OS_EDITION "Professional"
-#define OS_VERSION "Version 1.0 (Build 2600)"
+#define OS_VERSION "Version 1.1 (Build 2700)"
 
 /* ---------- input events ---------- */
 enum { EV_DOWN, EV_UP, EV_DRAG, EV_RDOWN, EV_SCROLL, EV_DBL };
@@ -26,7 +27,7 @@ struct Window {
     int maximized, minimized, rx, ry, rw, rh;
     int nofocus, topmost;           /* OSK style */
     int wants_keys, wants_pad;
-    uint64_t opened;
+    uint64_t opened, fade_t;
     void *data;
     void (*draw)(Window *, int x, int y, int w, int h);
     void (*mouse)(Window *, int ev, int x, int y);   /* client coords */
@@ -54,6 +55,9 @@ Window *win_find(int app);
 void win_center(Window *w);
 void win_minimize(Window *w);
 void win_toggle_max(Window *w);
+int  shell_taskbar_rect(Window *w, int *x, int *y, int *bw, int *bh);
+void sticky_restore_all(void);
+void music_tick(void);
 
 /* ---------- settings / theme ---------- */
 typedef struct {
@@ -107,7 +111,8 @@ static inline int inside(int px, int py, int x, int y, int w, int h) {
 enum {
     APP_COMPUTER, APP_NOTEPAD, APP_CALC, APP_PAINT, APP_MINES, APP_CMD, APP_CONTROL,
     APP_TASKMGR, APP_SNAKE, APP_CLOCK, APP_RECYCLE, APP_ABOUT, APP_HELP, APP_OSK,
-    APP_RUN, APP_MSGBOX, APP_PONG, APP_COUNT
+    APP_RUN, APP_MSGBOX, APP_PONG, APP_TERMINAL, APP_EXPLORER, APP_SOLITAIRE, APP_BLOCKS,
+    APP_VIEWER, APP_MUSIC, APP_STICKY, APP_COUNT
 };
 typedef struct { const char *name, *cmd; int icon; void (*open)(void); const char *desc; } AppInfo;
 extern const AppInfo apps[APP_COUNT];
@@ -118,20 +123,39 @@ void open_computer(void); void open_notepad(void); void open_calc(void); void op
 void open_mines(void); void open_cmd(void); void open_control(void); void open_taskmgr(void);
 void open_snake(void); void open_clock(void); void open_recycle(void); void open_about(void);
 void open_help(void); void open_osk(void); void open_run(void); void open_pong(void);
+void open_terminal(void); void open_explorer(void); void open_solitaire(void); void open_blocks(void);
+void open_viewer(void); void open_music(void); void open_sticky(void);
+void terminal_run(const char *cmdline);
+void explorer_open_path(const char *path);
+void viewer_open_file(const char *path);
+void music_open_file(const char *path);
+void music_play_notes(const char *notes, int tempo);
+void recycle_refresh_icon(void);
 
 /* shell popup menus (NULL label = separator) */
 typedef struct { const char *label; int id; } MItem;
 void shell_popup(int x, int y, const MItem *items, int n, void (*cb)(int id, int ctx), int ctx);
 /* single-line input dialog; cb receives the text (not called on Cancel) */
 void prompt_box(const char *title, const char *label, const char *initial, void (*cb)(const char *text, int ctx), int ctx);
-/* file chooser listing files with extension ext in the save folder */
-void file_picker(const char *title, const char *ext, void (*cb)(const char *name, int ctx), int ctx);
 extern int cpu_pct;
 void shell_wallpaper_dirty(void);
 void set_custom_wallpaper(const uint32_t *img, int w, int h);
 
-/* notepad helper for "New Text Document" + cmd "notepad file" */
-void notepad_open_file(const char *name);
+/* notepad: open a file by full path (NULL = new document) */
+void notepad_open_file(const char *path);
+void paint_open_file(const char *path);
+extern char clipboard[4096];
+
+/* single-line text field */
+typedef struct { char s[64]; int len, cur; } TField;
+void tf_set(TField *t, const char *s);
+void tf_key(TField *t, int k);
+void tf_draw(TField *t, int x, int y, int w, int active);
+
+/* common Open / Save As dialog over the virtual disk. cb gets the full path. */
+enum { FD_OPEN, FD_SAVE };
+void file_dialog(int mode, const char *title, const char *ext, const char *start_dir, const char *name,
+                 void (*cb)(const char *path, int ctx), int ctx);
 
 /* shared widget helpers (widgets.c) */
 void ui_panel_sunken(int x, int y, int w, int h, uint32_t bg);

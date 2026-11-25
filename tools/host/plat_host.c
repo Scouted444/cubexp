@@ -60,7 +60,10 @@ void plat_poll(PadState p[4]) {
     prev = held;
 }
 uint64_t plat_ms(void) { return (uint64_t)frame * 17; }
-void plat_play(const int16_t *pcm, int n, int r) { (void)pcm; (void)n; (void)r; }
+int16_t *plat_audio_alloc(int samples) { return calloc((samples + 15) & ~15, 2); }
+void plat_audio_ready(int16_t *pcm, int samples) { (void)pcm; (void)samples; }
+void plat_play(const int16_t *pcm, int n, int r, int v) { (void)pcm; (void)n; (void)r; (void)v; }
+void plat_stop_all(void) {}
 int plat_storage_ok(void) { return 1; }
 const char *plat_storage_path(void) { return "sd/cubexp"; }
 const char *plat_storage_name(void) { return "SD Gecko"; }

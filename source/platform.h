@@ -20,7 +20,12 @@ void plat_init(void);
 void plat_present(void);           /* push fb[] to the TV and wait for vblank */
 void plat_poll(PadState pads[4]);
 uint64_t plat_ms(void);
-void plat_play(const int16_t *pcm, int samples, int rate);
+/* audio buffers must come from plat_audio_alloc and be finished with plat_audio_ready;
+   they are played in place, so keep them alive */
+int16_t *plat_audio_alloc(int samples);
+void plat_audio_ready(int16_t *pcm, int samples);
+void plat_play(const int16_t *pcm, int samples, int rate, int vol);
+void plat_stop_all(void);
 int  plat_storage_ok(void);
 const char *plat_storage_path(void);  /* folder for saves, no trailing slash */
 const char *plat_video_mode(void);

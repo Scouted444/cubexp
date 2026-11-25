@@ -10,7 +10,7 @@
 typedef struct {
     char buf[NP_MAX];
     int len, cur, scroll, dirty, want_col;
-    char fname[40];
+    char path[160];
     int starts[NP_LINES], nlines, cols, vis;
 } NP;
 
@@ -24,7 +24,8 @@ static Window *win_of(int ctx) {
 
 static void np_title(Window *w) {
     NP *d = w->data;
-    snprintf(w->title, sizeof w->title, "%s%s - Notepad", d->dirty ? "*" : "", d->fname[0] ? d->fname : "Untitled");
+    const char *nm = d->path[0] ? strrchr(d->path, '/') + 1 : "Untitled";
+    snprintf(w->title, sizeof w->title, "%s%.30s - Notepad", d->dirty ? "*" : "", nm);
 }
 
 static void layout(NP *d, int cols) {
@@ -62,7 +63,7 @@ static int line_of(NP *d, int pos) {
 static void np_geom(Window *w, int *tx, int *ty, int *tw, int *th) {
     int x, y, cw, ch;
     win_client(w, &x, &y, &cw, &ch);
-    *tx = 0; *ty = 20; *tw = cw - 16; *th = ch - 20;
+    *tx = 0; *ty = 20; *tw = cw - 16; *th = ch - 20 - 20;
 }
 
 static void np_draw(Window *w, int x, int y, int cw, int ch) {
@@ -88,6 +89,14 @@ static void np_draw(Window *w, int x, int y, int cw, int ch) {
     }
     gfx_noclip();
     ui_scrollbar(x + cw - 16, y + ty, th, d->nlines, d->vis, d->scroll);
+    int sy = y + ty + th;
+    fill(x, sy, cw, 20, C_FACE);
+    hline(x, sy, cw, C_SHADOW);
+    char st[64];
+    snprintf(st, sizeof st, "Ln %d, Col %d", cl + 1, d->cur - d->starts[cl] + 1);
+    text(&font_ui, x + cw - 120, sy + 4, st, 0);
+    snprintf(st, sizeof st, "%d characters", d->len);
+    text(&font_ui, x + 6, sy + 4, st, 0x404040);
 }
 
 static void insert(NP *d, char c) {
@@ -151,8 +160,8 @@ static void np_mouse(Window *w, int ev, int mx, int my) {
             static const MItem it[] = { { "New", 1 }, { "Open...", 2 }, { "Save", 3 }, { "Save As...", 4 }, { NULL, 0 }, { "Exit", 5 } };
             shell_popup(px - 3, y + 19, it, 6, np_menu_cb, ctx_of(w));
         } else if (m == 1) {
-            static const MItem it[] = { { "Time/Date", 6 }, { "Clear All", 7 }, { NULL, 0 }, { "Show Keyboard", 9 } };
-            shell_popup(px - 3, y + 19, it, 4, np_menu_cb, ctx_of(w));
+            static const MItem it[] = { { "Copy All", 10 }, { "Paste", 11 }, { NULL, 0 }, { "Time/Date", 6 }, { "Clear All", 7 }, { NULL, 0 }, { "Show Keyboard", 9 } };
+            shell_popup(px - 3, y + 19, it, 7, np_menu_cb, ctx_of(w));
         } else {
             static const MItem it[] = { { "About Notepad", 8 } };
             shell_popup(px - 3, y + 19, it, 1, np_menu_cb, ctx_of(w));
@@ -179,63 +188,57 @@ static void np_mouse(Window *w, int ev, int mx, int my) {
     }
 }
 
-static int load_file(NP *d, const char *name) {
-    char p[96];
-    snprintf(p, sizeof p, "%s/%s", plat_storage_path(), name);
-    FILE *f = fopen(p, "rb");
-    if (!f) return 0;
-    d->len = (int)fread(d->buf, 1, NP_MAX - 1, f);
-    fclose(f);
-    int j = 0;   /* strip CRs */
-    for (int i = 0; i < d->len; i++) if (d->buf[i] != '\r') d->buf[j++] = d->buf[i];
+static int load_file(NP *d, const char *path) {
+    VNode *f = vfs_lookup(NULL, path);
+    if (!f || f->dir) return 0;
+    int n = f->size < NP_MAX - 1 ? f->size : NP_MAX - 1, j = 0;
+    for (int i = 0; i < n; i++) if (f->data[i] != '\r') d->buf[j++] = f->data[i];
     d->len = j;
     d->cur = 0; d->scroll = 0; d->dirty = 0;
-    strncpy(d->fname, name, sizeof d->fname - 1);
+    vfs_path(f, d->path, sizeof d->path);
     return 1;
 }
-static void save_to(Window *w, const char *name) {
+static void save_to(Window *w, const char *path) {
     NP *d = w->data;
-    if (!plat_storage_ok()) {
-        msgbox("Notepad", "No SD card was found, so the file can't be saved.\nSee Help and Support for how to add one.", IC_WARN);
-        return;
-    }
-    char nm[40];
-    strncpy(nm, name, 35); nm[35] = 0;
-    if (!strchr(nm, '.')) strcat(nm, ".txt");
-    char p[96];
-    snprintf(p, sizeof p, "%s/%s", plat_storage_path(), nm);
-    FILE *f = fopen(p, "wb");
-    if (!f) { msgbox("Notepad", "The file could not be written.", IC_WARN); return; }
-    fwrite(d->buf, 1, d->len, f);
-    fclose(f);
-    strcpy(d->fname, nm);
+    VNode *f = vfs_create(NULL, path);
+    if (!f || !vfs_write(f, d->buf, d->len)) { msgbox("Notepad", "The file could not be saved.\nCheck the name and folder.", IC_WARN); return; }
+    vfs_path(f, d->path, sizeof d->path);
     d->dirty = 0;
     np_title(w);
-    char m[80];
-    snprintf(m, sizeof m, "Saved %s to the SD card.", nm);
+    char m[200];
+    snprintf(m, sizeof m, "Saved to %s", d->path);
     notify("Notepad", m);
 }
-static void saveas_cb(const char *name, int ctx) {
+static void saveas_cb(const char *path, int ctx) {
     Window *w = win_of(ctx);
-    if (w && *name) save_to(w, name);
+    if (w) save_to(w, path);
 }
-static void open_cb(const char *name, int ctx) {
+static void open_cb(const char *path, int ctx) {
     Window *w = win_of(ctx);
     if (!w) return;
-    if (!load_file(w->data, name)) msgbox("Notepad", "The file could not be opened.", IC_WARN);
+    if (!load_file(w->data, path)) msgbox("Notepad", "The file could not be opened.", IC_WARN);
     np_title(w);
     win_focus(w);
 }
+static void dir_of(NP *d, char *out, int n) {
+    snprintf(out, n, "%s", d->path[0] ? d->path : "/Documents/x");
+    char *sl = strrchr(out, '/');
+    if (sl && sl != out) *sl = 0; else snprintf(out, n, "/");
+}
+char clipboard[4096];
 
 void np_menu_cb(int id, int ctx) {
     Window *w = win_of(ctx);
     if (!w) return;
     NP *d = w->data;
     switch (id) {
-    case 1: d->len = d->cur = d->scroll = 0; d->dirty = 0; d->fname[0] = 0; break;
-    case 2: file_picker("Open", ".txt", open_cb, ctx); break;
-    case 3: if (d->fname[0]) save_to(w, d->fname); else prompt_box("Save As", "File name:", "note.txt", saveas_cb, ctx); break;
-    case 4: prompt_box("Save As", "File name:", d->fname[0] ? d->fname : "note.txt", saveas_cb, ctx); break;
+    case 1: d->len = d->cur = d->scroll = 0; d->dirty = 0; d->path[0] = 0; break;
+    case 2: { char dir[160]; dir_of(d, dir, sizeof dir); file_dialog(FD_OPEN, "Open", ".txt", dir, NULL, open_cb, ctx); break; }
+    case 3: if (d->path[0]) { save_to(w, d->path); break; } /* fall through */
+    case 4: { char dir[160]; dir_of(d, dir, sizeof dir);
+              file_dialog(FD_SAVE, "Save As", ".txt", dir, d->path[0] ? strrchr(d->path, '/') + 1 : "Untitled.txt", saveas_cb, ctx); break; }
+    case 10: { int n = d->len < (int)sizeof clipboard - 1 ? d->len : (int)sizeof clipboard - 1; memcpy(clipboard, d->buf, n); clipboard[n] = 0; notify("Notepad", "Copied the whole document."); break; }
+    case 11: for (const char *p = clipboard; *p; p++) insert(d, *p); break;
     case 5: win_close(w); return;
     case 6: {
         time_t t = time(NULL);
@@ -244,7 +247,7 @@ void np_menu_cb(int id, int ctx) {
         for (char *p = b; *p; p++) insert(d, *p);
         break; }
     case 7: d->len = d->cur = d->scroll = 0; d->dirty = 1; break;
-    case 8: msgbox("About Notepad", "CubeXP Notepad\n\nUp to 8 KB of text per file.\nFiles are saved to the SD card in /cubexp.", IC_NOTEPAD); break;
+    case 8: msgbox("About Notepad", "CubeXP Notepad\n\nUp to 8 KB of text per file.\nFiles are saved on Local Disk (C:).", IC_NOTEPAD); break;
     case 9: if (!osk_visible()) osk_toggle(); break;
     }
     np_title(w);
@@ -263,24 +266,13 @@ static Window *np_new(void) {
 
 void open_notepad(void) {
     Window *w = np_new();
-    if (!w) return;
-    NP *d = w->data;
-    if (plat_storage_ok() && load_file(d, "readme.txt")) { np_title(w); return; }
-    const char *hello =
-        "Welcome to CubeXP Notepad!\n\n"
-        "Click the keys on the On-Screen Keyboard (press X) to type.\n"
-        "L = Backspace, R = Space, Y = Enter, D-Pad = arrow keys.\n\n"
-        "Use File > Save to keep your notes on the SD card.\n";
-    strcpy(d->buf, hello);
-    d->len = strlen(hello); d->cur = d->len;
-    np_title(w);
+    if (w) np_title(w);
 }
 
-void notepad_open_file(const char *name) {
+void notepad_open_file(const char *path) {
     Window *w = np_new();
     if (!w) return;
     NP *d = w->data;
-    if (name && !load_file(d, name)) msgbox("Notepad", "The file could not be opened.", IC_WARN);
-    if (!name) strcpy(d->fname, "New Text Document.txt");
+    if (path && !load_file(d, path)) msgbox("Notepad", "The file could not be opened.", IC_WARN);
     np_title(w);
 }

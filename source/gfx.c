@@ -5,16 +5,54 @@
 
 uint32_t fb[SW * SH] __attribute__((aligned(32)));
 
+/* current render target: buffer covering the absolute rect (tx,ty,tw,th) */
+static uint32_t *tb = fb;
+static int tx = 0, ty = 0, tw = SW, th = SH;
 static int cx0 = 0, cy0 = 0, cx1 = SW, cy1 = SH;
+#define PX(x, y) tb[((y) - ty) * tw + ((x) - tx)]
+
+void gfx_target(uint32_t *buf, int x, int y, int w, int h) {
+    tb = buf; tx = x; ty = y; tw = w; th = h;
+    gfx_noclip();
+}
+void gfx_target_screen(void) { gfx_target(fb, 0, 0, SW, SH); }
 
 void gfx_clip(int x, int y, int w, int h) {
-    cx0 = x < 0 ? 0 : x; cy0 = y < 0 ? 0 : y;
-    cx1 = x + w > SW ? SW : x + w; cy1 = y + h > SH ? SH : y + h;
+    cx0 = x < tx ? tx : x; cy0 = y < ty ? ty : y;
+    cx1 = x + w > tx + tw ? tx + tw : x + w; cy1 = y + h > ty + th ? ty + th : y + h;
     if (cx1 < cx0) cx1 = cx0;
     if (cy1 < cy0) cy1 = cy0;
 }
-void gfx_noclip(void) { cx0 = 0; cy0 = 0; cx1 = SW; cy1 = SH; }
+void gfx_noclip(void) { cx0 = tx; cy0 = ty; cx1 = tx + tw; cy1 = ty + th; }
 void gfx_getclip(int *x, int *y, int *w, int *h) { *x = cx0; *y = cy0; *w = cx1 - cx0; *h = cy1 - cy0; }
+
+/* ---- layers: draw into an offscreen copy, then blend back with alpha ---- */
+static uint32_t layer_buf[SW * SH];
+static int lx, ly, lw, lh, layer_on;
+void layer_begin(int x, int y, int w, int h) {
+    if (x < 0) { w += x; x = 0; }
+    if (y < 0) { h += y; y = 0; }
+    if (x + w > SW) w = SW - x;
+    if (y + h > SH) h = SH - y;
+    if (w <= 0 || h <= 0) { w = h = 1; x = y = 0; }
+    lx = x; ly = y; lw = w; lh = h; layer_on = 1;
+    for (int j = 0; j < h; j++) memcpy(&layer_buf[j * w], &fb[(y + j) * SW + x], w * 4);
+    gfx_target(layer_buf, x, y, w, h);
+}
+void layer_end(int alpha) {
+    if (!layer_on) return;
+    layer_on = 0;
+    gfx_target_screen();
+    if (alpha >= 256) {
+        for (int j = 0; j < lh; j++) memcpy(&fb[(ly + j) * SW + lx], &layer_buf[j * lw], lw * 4);
+        return;
+    }
+    if (alpha <= 0) return;
+    for (int j = 0; j < lh; j++) {
+        uint32_t *d = &fb[(ly + j) * SW + lx], *s = &layer_buf[j * lw];
+        for (int i = 0; i < lw; i++) d[i] = mix(d[i], s[i], alpha);
+    }
+}
 
 uint32_t mix(uint32_t a, uint32_t b, int t) {
     int it = 256 - t;
@@ -32,15 +70,15 @@ uint32_t shade(uint32_t c, int pct) {
 }
 
 void pset(int x, int y, uint32_t c) {
-    if (x >= cx0 && x < cx1 && y >= cy0 && y < cy1) fb[y * SW + x] = c;
+    if (x >= cx0 && x < cx1 && y >= cy0 && y < cy1) PX(x, y) = c;
 }
 uint32_t pget(int x, int y) {
-    if (x < 0 || y < 0 || x >= SW || y >= SH) return 0;
-    return fb[y * SW + x];
+    if (x < tx || y < ty || x >= tx + tw || y >= ty + th) return 0;
+    return PX(x, y);
 }
 static void pblend(int x, int y, uint32_t c, int a) {
     if (x >= cx0 && x < cx1 && y >= cy0 && y < cy1) {
-        uint32_t *p = &fb[y * SW + x];
+        uint32_t *p = &PX(x, y);
         *p = mix(*p, c, a);
     }
 }
@@ -49,7 +87,7 @@ void fill(int x, int y, int w, int h, uint32_t c) {
     int x0 = x < cx0 ? cx0 : x, y0 = y < cy0 ? cy0 : y;
     int x1 = x + w > cx1 ? cx1 : x + w, y1 = y + h > cy1 ? cy1 : y + h;
     for (int j = y0; j < y1; j++) {
-        uint32_t *p = &fb[j * SW + x0];
+        uint32_t *p = &PX(x0, j);
         for (int i = x0; i < x1; i++) *p++ = c;
     }
 }
@@ -57,7 +95,7 @@ void fill_a(int x, int y, int w, int h, uint32_t c, int a) {
     int x0 = x < cx0 ? cx0 : x, y0 = y < cy0 ? cy0 : y;
     int x1 = x + w > cx1 ? cx1 : x + w, y1 = y + h > cy1 ? cy1 : y + h;
     for (int j = y0; j < y1; j++) {
-        uint32_t *p = &fb[j * SW + x0];
+        uint32_t *p = &PX(x0, j);
         for (int i = x0; i < x1; i++, p++) *p = mix(*p, c, a);
     }
 }
@@ -126,6 +164,12 @@ void round_fill(int x, int y, int w, int h, int r, uint32_t c) {
         hline(x + in, y + j, w - 2 * in, c);
     }
 }
+void round_fill_a(int x, int y, int w, int h, int r, uint32_t c, int a) {
+    for (int j = 0; j < h; j++) {
+        int in = corner_inset(j, h, r);
+        fill_a(x + in, y + j, w - 2 * in, 1, c, a);
+    }
+}
 void round_grad(int x, int y, int w, int h, int r, uint32_t c1, uint32_t c2, int top_only) {
     for (int j = 0; j < h; j++) {
         int in = (top_only && j >= r) ? 0 : corner_inset(j, h, r);
@@ -151,6 +195,38 @@ void xp_button(int x, int y, int w, int h, const char *label, int pressed, int h
         text(&font_ui, x + (w - tw) / 2 + pressed, y + (h - font_ui.height) / 2 + pressed, label, 0);
     }
 }
+void blit_argb(const uint32_t *src, int sw, int sh, int x, int y, int alpha) {
+    for (int j = 0; j < sh; j++) {
+        int py = y + j;
+        if (py < cy0 || py >= cy1) continue;
+        for (int i = 0; i < sw; i++) {
+            int px = x + i;
+            if (px < cx0 || px >= cx1) continue;
+            uint32_t s = src[j * sw + i];
+            int a = s >> 24;
+            if (!a) continue;
+            a = a * alpha >> 8;
+            uint32_t *d = &PX(px, py);
+            *d = a >= 255 ? (s & 0xFFFFFF) : mix(*d, s & 0xFFFFFF, a + (a >> 7));
+        }
+    }
+}
+void shadow_rect(int x, int y, int w, int h, int r, int strength) {
+    /* soft drop shadow drawn as fading rings (cheap: only the visible edge pixels) */
+    int ox = 2, oy = 3;
+    for (int k = 1; k <= r; k++) {
+        int a = strength * (r + 1 - k) / (r + 1) / 2;
+        int X = x + ox - k, Y = y + oy - k, W = w + 2 * k, H = h + 2 * k;
+        fill_a(X + k, Y, W - 2 * k, 1, 0, a);
+        fill_a(X + k, Y + H - 1, W - 2 * k, 1, 0, a);
+        fill_a(X, Y + k, 1, H - 2 * k, 0, a);
+        fill_a(X + W - 1, Y + k, 1, H - 2 * k, 0, a);
+    }
+    fill_a(x + w, y + oy, ox, h, 0, strength / 2);
+    fill_a(x + ox, y + h, w - ox, oy, 0, strength / 2);
+}
+void gfx_push(GfxState *s) { s->b = tb; s->x = tx; s->y = ty; s->w = tw; s->h = th; s->c[0] = cx0; s->c[1] = cy0; s->c[2] = cx1; s->c[3] = cy1; }
+void gfx_pop(const GfxState *s) { tb = s->b; tx = s->x; ty = s->y; tw = s->w; th = s->h; cx0 = s->c[0]; cy0 = s->c[1]; cx1 = s->c[2]; cy1 = s->c[3]; }
 void grayscale_screen(int amt) {
     for (int i = 0; i < SW * SH; i++) {
         uint32_t c = fb[i];

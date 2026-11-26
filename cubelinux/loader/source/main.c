@@ -17,7 +17,6 @@
 #define XFB_UNC    ((uint32_t *)(0xC0000000u | XFB_PHYS))
 
 extern const uint8_t kernel_bin[], kernel_bin_end[];
-extern uint8_t __bss_start[], _end[];
 
 static GXRModeObj *rmode;
 
@@ -189,7 +188,6 @@ int main(void) {
     __asm__ volatile("mr %0, 1" : "=r"(sp));
     uint32_t ours = (uint32_t)(uintptr_t)SYS_GetArenaLo();
     if (sp > ours) ours = sp + 0x1000;
-    if ((uint32_t)(uintptr_t)_end > ours) ours = (uint32_t)(uintptr_t)_end;
     if (lo < ours && hi > 0x80003000u) {
         char m[120];
         snprintf(m, sizeof m, "The kernel (%08lx-%08lx) overlaps the loader (ends %08lx).", (unsigned long)lo, (unsigned long)hi, (unsigned long)ours);

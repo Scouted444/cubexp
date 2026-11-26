@@ -51,6 +51,20 @@ About 70 commands, including `ls cd pwd mkdir rm cp mv cat touch tree find grep 
 - Tab completion, command history, scrollback, and tappable chips for controller users
 - Any program name opens it: `snake`, `explorer`, `notepad todo.txt`
 
+## CubeLinux — real Linux on the GameCube
+
+`cubelinux.dol` (from the [cubelinux-latest release](../../releases/tag/cubelinux-latest)) boots a real **Linux 6.6 LTS kernel** on the GameCube, with a BusyBox userland and the CubeXP desktop running on top as a normal Linux program.
+
+- **Boot menu**: desktop, text console, or verbose boot. Starts on its own after 5 seconds.
+- **TV layer** (`cubefb` kernel driver): a 640×480 32-bit `/dev/fb0`. Changed rows get converted to the console's YUY2 TV picture. PAL consoles run in PAL60.
+- **Controller layer** (`cubepad` kernel driver): the four controller ports show up as evdev gamepads named "GameCube Controller 1–4".
+- **Desktop**: the same CubeXP shell, but the Terminal is a real `/bin/sh` on a pseudo-terminal, and Explorer, Notepad and Paint read and write the real files in `/home/player`.
+- **Text console**: tty2 has a plain shell. You can also pick "text console" in the boot menu.
+
+Limits: no sound or SD card access yet, and everything lives in RAM, so files are gone after a reboot. The console has 24 MB of RAM and a 486 MHz CPU, so expect it to be slow. In Dolphin, turn on *Config → Advanced → Enable MMU*.
+
+Build pieces: `cubelinux/kernel` (drivers, DTS, build script), `cubelinux/rootfs` (BusyBox, init, session), `cubelinux/loader` (the DOL), and `.github/workflows/cubelinux.yml`.
+
 ## Controls
 
 | Button | Action |

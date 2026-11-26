@@ -48,7 +48,7 @@ static inline u32 yuy2_pair(u32 p0, u32 p1)
 
 static void cubefb_convert_rows(struct cubefb_par *par, int y0, int y1)
 {
-	const u32 *src = par->info->screen_buffer;
+	const u32 *src = (const u32 *)par->info->screen_buffer;
 	u32 stride_px = par->info->fix.line_length / 4;
 	int y, x;
 

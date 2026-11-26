@@ -328,6 +328,7 @@ static void open_term_style(int style) {
     }
 }
 void open_cmd(void) { open_term_style(1); }
+#ifndef CUBELINUX
 void open_terminal(void) { open_term_style(0); }
 
 /* used by Explorer / desktop: run a script in a new terminal */
@@ -340,3 +341,4 @@ void terminal_run(const char *cmdline) {
     d->len = d->cur = strlen(d->in);
     run_input(w, d);
 }
+#endif

@@ -44,7 +44,7 @@ static void fd_draw(Window *w, int x, int y, int cw, int ch) {
     fill(x + LX, y + 8, cw - LX - 70, 21, 0xFFFFFF); rect(x + LX, y + 8, cw - LX - 70, 21, 0x7F9DB9);
     draw_icon(d->dir == vfs_root ? IC_DRIVE : vfs_icon(d->dir), x + LX + 3, y + 10, 16);
     gfx_clip(x + LX, y + 8, cw - LX - 72, 21);
-    text(&font_ui, x + LX + 23, y + 12, d->dir == vfs_root ? "Local Disk (C:)" : p, 0);
+    text(&font_ui, x + LX + 23, y + 12, d->dir == vfs_root ? DRIVE_NAME : p, 0);
     gfx_noclip();
     ui_button(x + cw - 62, y + 7, 24, 23, NULL, w); draw_icon(IC_UP, x + cw - 58, y + 10, 16);
     ui_button(x + cw - 34, y + 7, 24, 23, NULL, w); draw_icon(IC_NEWFOLDER, x + cw - 30, y + 10, 16);

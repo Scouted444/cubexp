@@ -5,6 +5,9 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
+#ifdef CUBELINUX
+#include <sys/utsname.h>
+#endif
 
 /* ---------- single line text field ---------- */
 void tf_set(TField *t, const char *s) { strncpy(t->s, s, 63); t->s[63] = 0; t->len = t->cur = strlen(t->s); }
@@ -131,7 +134,7 @@ typedef struct { TField f; } RunData;
 static void run_draw(Window *w, int x, int y, int cw, int ch) {
     RunData *d = w->data;
     draw_icon(IC_RUN, x + 12, y + 12, 32);
-    text(&font_ui, x + 56, y + 12, "Type the name of a program and CubeXP", 0);
+    text(&font_ui, x + 56, y + 12, "Type the name of a program and " OS_NAME, 0);
     text(&font_ui, x + 56, y + 26, "will open it for you. (Try: notepad, cmd, snake)", 0);
     text(&font_ui, x + 12, y + 60, "Open:", 0);
     tf_draw(&d->f, x + 56, y + 56, cw - 68, w == focus);
@@ -153,7 +156,7 @@ static void run_go(Window *w) {
     if (a >= 0) app_launch(a);
     else {
         char m[160];
-        snprintf(m, sizeof m, "CubeXP cannot find '%s'. Make sure you typed\nthe name correctly, and then try again.", s);
+        snprintf(m, sizeof m, OS_NAME " cannot find '%s'. Make sure you typed\nthe name correctly, and then try again.", s);
         msgbox(s, m, IC_WARN);
     }
 }
@@ -184,13 +187,19 @@ void open_run(void) {
 static void about_draw(Window *w, int x, int y, int cw, int ch) {
     grad_h(x, y, cw, 70, 0x0A2A8C, 0x5A7EDC);
     draw_icon(IC_LOGO, x + 16, y + 11, 48);
-    text(&font_huge, x + 76, y + 14, "CubeXP", 0xFFFFFF);
+    text(&font_huge, x + 76, y + 14, OS_NAME, 0xFFFFFF);
     text(&font_bold, x + 210, y + 18, OS_EDITION, 0xF59A23);
     hline(x, y + 70, cw, 0xF59A23);
     int ty = y + 86;
-    text(&font_ui, x + 20, ty, "CubeXP " OS_EDITION, 0); ty += 15;
+    text(&font_ui, x + 20, ty, OS_NAME " " OS_EDITION, 0); ty += 15;
+#ifdef CUBELINUX
+    { struct utsname u; char kb[120]; uname(&u); snprintf(kb, sizeof kb, "Linux %s (%s) - GameCube Edition", u.release, u.machine);
+      text(&font_ui, x + 20, ty, kb, 0); ty += 15; }
+    text(&font_ui, x + 20, ty, "Real Linux for the Nintendo GameCube, with the CubeXP desktop.", 0); ty += 15;
+#else
     text(&font_ui, x + 20, ty, OS_VERSION " - GameCube Edition", 0); ty += 15;
     text(&font_ui, x + 20, ty, "A Windows XP-style shell for the Nintendo GameCube.", 0); ty += 15;
+#endif
     text(&font_ui, x + 20, ty, "Built with devkitPPC and libogc. Fonts: DejaVu.", 0); ty += 24;
     hline(x + 20, ty, cw - 40, C_SHADOW); ty += 10;
     char b[96];
@@ -206,7 +215,7 @@ static void about_mouse(Window *w, int ev, int mx, int my) {
     if (ev == EV_DOWN && inside(mx, my, cw - 90, ch - 32, 75, 23)) win_close(w);
 }
 void open_about(void) {
-    Window *w = win_new("About CubeXP", IC_LOGO, 400, 270);
+    Window *w = win_new("About " OS_NAME, IC_LOGO, 400, 270);
     if (!w) return;
     w->app = APP_ABOUT; w->no_max = 1;
     w->draw = about_draw; w->mouse = about_mouse;

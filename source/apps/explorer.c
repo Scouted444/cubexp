@@ -39,7 +39,7 @@ static VNode *item(EX *d, int i) { VNode *c = d->dir->child; while (c && i--) c 
 
 static void set_title(Window *w) {
     EX *d = w->data;
-    const char *t = d->dir == vfs_root ? "Local Disk (C:)" : d->dir == vfs_docs ? "My Documents" : d->dir == vfs_pics ? "My Pictures" :
+    const char *t = d->dir == vfs_root ? DRIVE_NAME : d->dir == vfs_docs ? "My Documents" : d->dir == vfs_pics ? "My Pictures" :
                     d->dir == vfs_music ? "My Music" : d->dir->name;
     snprintf(w->title, sizeof w->title, "%s", t);
     w->icon = d->dir == vfs_root ? IC_DRIVE : vfs_icon(d->dir);
@@ -70,7 +70,7 @@ static const char *tb_labels[] = { "Back", "Up", "New Folder", "Delete", "Views"
 static const int tb_icons[] = { IC_BACK, IC_UP, IC_NEWFOLDER, IC_DELETE, IC_SHOWDESK };
 static int tb_x(int i) { int x = 6; for (int k = 0; k < i; k++) x += 26 + text_w(&font_ui, tb_labels[k]) + 10; return x; }
 
-static const char *place_names[] = { "Desktop", "My Documents", "My Pictures", "My Music", "Local Disk (C:)", "Recycle Bin" };
+static const char *place_names[] = { "Desktop", "My Documents", "My Pictures", "My Music", DRIVE_NAME, "Recycle Bin" };
 static VNode **place_nodes[] = { &vfs_desktop, &vfs_docs, &vfs_pics, &vfs_music, &vfs_root, &vfs_recycle };
 static const char *task_names[] = { "Make a new folder", "New text document", "Rename this item", "Delete this item", "Copy this item", "Paste here" };
 static const int task_icons[] = { IC_NEWFOLDER, IC_TEXTFILE, IC_FILE, IC_DELETE, IC_DOCS, IC_FOLDER };
@@ -104,8 +104,12 @@ static void ex_draw(Window *w, int x, int y, int cw, int ch) {
     draw_icon(d->dir == vfs_root ? IC_DRIVE : vfs_icon(d->dir), x + 63, ay + 5, 16);
     char p[200], disp[210];
     vfs_path(d->dir, p, sizeof p);
+#ifdef CUBELINUX
+    snprintf(disp, sizeof disp, "%s%s", getenv("HOME") ? getenv("HOME") : "/home/player", strcmp(p, "/") ? p : "");
+#else
     snprintf(disp, sizeof disp, "C:%s", p);
     for (char *c = disp; *c; c++) if (*c == '/') *c = '\\';
+#endif
     text(&font_ui, x + 84, ay + 6, disp, 0);
     /* task pane */
     int py = ay + AD_H;

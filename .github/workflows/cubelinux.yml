@@ -1,0 +1,74 @@
+name: Build CubeLinux
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  kernel:
+    name: Kernel + root filesystem
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the PowerPC cross compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-powerpc-linux-gnu libc6-dev-powerpc-cross \
+            bc bison flex libssl-dev libelf-dev cpio file xz-utils bzip2 u-boot-tools
+
+      - name: Build the root filesystem (BusyBox + desktop)
+        run: sh cubelinux/rootfs/build.sh
+
+      - name: Build the kernel
+        run: ROOTFS=$PWD/cubelinux/rootfs/out sh cubelinux/kernel/build.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cubelinux-kernel
+          path: cubelinux/kernel/out/dtbImage.gamecube
+          if-no-files-found: error
+
+  loader:
+    name: Boot loader DOL
+    needs: kernel
+    runs-on: ubuntu-latest
+    container: devkitpro/devkitppc:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: cubelinux-kernel
+          path: kout
+
+      - name: Build cubelinux.dol
+        run: |
+          cp kout/dtbImage.gamecube cubelinux/loader/data/kernel.bin
+          make -C cubelinux/loader -j"$(nproc)"
+          test -f cubelinux/loader/cubelinux.dol
+          $DEVKITPPC/bin/powerpc-eabi-nm cubelinux/loader/cubelinux.elf | grep -qE " [RrDd] kernel_bin_end$"
+          ls -l cubelinux/loader/cubelinux.dol
+          cp cubelinux/loader/cubelinux.dol .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cubelinux
+          path: cubelinux.dol
+          if-no-files-found: error
+
+      - name: Publish to the "cubelinux-latest" release
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: cubelinux-latest
+          name: CubeLinux (latest build)
+          body: |
+            Real Linux (6.6 LTS) for the Nintendo GameCube with the CubeXP desktop.
+            Download **cubelinux.dol** and open it in Dolphin (File > Open), or launch it from an SD card with Swiss.
+            In Dolphin, turn on Config > Advanced > "Enable MMU" (Linux needs real address translation).
+          files: cubelinux.dol

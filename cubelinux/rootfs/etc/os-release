@@ -1,0 +1,5 @@
+NAME="CubeLinux"
+VERSION="1.0"
+ID=cubelinux
+PRETTY_NAME="CubeLinux 1.0"
+HOME_URL="https://github.com/Scouted444/cubexp"

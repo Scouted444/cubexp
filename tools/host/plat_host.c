@@ -1,5 +1,6 @@
 /* PC test harness: runs CubeXP headless from a script and dumps screenshots */
 #include <stdio.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -49,6 +50,7 @@ void plat_present(void) {
         if (!strcmp(cmd, "shot")) shot(a);
         if (!strcmp(cmd, "quit")) exit(0);
         if (!strcmp(cmd, "launch")) app_launch(atoi(a));
+#ifndef CUBELINUX
         if (!strcmp(cmd, "vtdemo")) {
             extern void linux_debug_feed(const char *s);
             linux_debug_feed(
@@ -63,6 +65,9 @@ void plat_present(void) {
                 "\x1b[1;32m~ #\x1b[0m top\x1b[s\x1b[20;50H\x1b[44;97m positioned box \x1b[0m\x1b[u\r\n"
                 "\x1b[1;32m~ #\x1b[0m echo hi\b\b\x1b[K\x1b[1;35mHI\x1b[0m");
         }
+#endif
+        if (!strcmp(cmd, "sleep")) usleep(atoi(a) * 1000);
+        if (!strcmp(cmd, "sh")) { char *q = strchr(line, ' '); if (q) { if (system(q + 1)) {} } }
         if (!strcmp(cmd, "closeall")) { extern void wm_close_all(void); wm_close_all(); }
     }
     exit(0);

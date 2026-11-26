@@ -1,5 +1,5 @@
 /* GameCube platform layer: libogc video/pad/audio/SD. */
-#ifndef HOST_BUILD
+#if !defined(HOST_BUILD) && !defined(CUBELINUX)
 #include <gccore.h>
 #include <ogc/lwp_watchdog.h>
 #include <asndlib.h>

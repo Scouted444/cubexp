@@ -14,6 +14,19 @@ static uint64_t dirty_t;
 
 static void touch_changed(void) { vfs_changes++; dirty = 1; dirty_t = now_ms; }
 
+#ifdef CUBELINUX
+#include <unistd.h>
+/* ---- CubeLinux: the tree mirrors the real files under $HOME ---- */
+static void real_mkdir(VNode *n);
+static void real_write(VNode *f);
+static void real_unlink_tree(const char *path);
+static void real_path(VNode *n, char *buf, int len);
+static void recycle_index_save(void);
+#define RHOOK(x) x
+#else
+#define RHOOK(x)
+#endif
+
 static VNode *node_new(const char *name, int dir) {
     VNode *n = calloc(1, sizeof(VNode));
     if (!n) return NULL;
@@ -112,6 +125,7 @@ VNode *vfs_mkdir(VNode *cwd, const char *path, int parents) {
                 c = node_new(tok, 1);
                 if (!c) return NULL;
                 link_child(d, c);
+                RHOOK(real_mkdir(c));
                 touch_changed();
             } else if (!c->dir) return NULL;
             d = c;
@@ -124,6 +138,7 @@ VNode *vfs_mkdir(VNode *cwd, const char *path, int parents) {
     VNode *n = node_new(leaf, 1);
     if (!n) return NULL;
     link_child(dir, n);
+    RHOOK(real_mkdir(n));
     touch_changed();
     return n;
 }
@@ -137,6 +152,7 @@ VNode *vfs_create(VNode *cwd, const char *path) {
     VNode *n = node_new(leaf, 0);
     if (!n) return NULL;
     link_child(dir, n);
+    RHOOK(real_write(n));
     touch_changed();
     return n;
 }
@@ -155,6 +171,7 @@ int vfs_write(VNode *f, const void *d, int n) {
     if (!f || f->dir || !reserve(f, n)) return 0;
     if (n) memcpy(f->data, d, n);
     f->size = n; f->mtime = (uint32_t)time(NULL);
+    RHOOK(real_write(f));
     touch_changed();
     return 1;
 }
@@ -162,6 +179,7 @@ int vfs_append(VNode *f, const void *d, int n) {
     if (!f || f->dir || !reserve(f, f->size + n)) return 0;
     memcpy(f->data + f->size, d, n);
     f->size += n; f->mtime = (uint32_t)time(NULL);
+    RHOOK(real_write(f));
     touch_changed();
     return 1;
 }
@@ -211,14 +229,27 @@ int vfs_remove(VNode *n, int to_recycle) {
     if (to_recycle && !vfs_is_inside(n, vfs_recycle)) {
         char p[96], nm[40];
         vfs_path(n, p, sizeof p);
+#ifdef CUBELINUX
+        char from[300]; real_path(n, from, sizeof from);
+#endif
         unlink_node(n);
         vfs_unique_name(vfs_recycle, n->name, "", nm, sizeof nm);
         strcpy(n->orig, p);
         strcpy(n->name, nm);
         link_child(vfs_recycle, n);
+#ifdef CUBELINUX
+        char to[300]; real_path(n, to, sizeof to);
+        rename(from, to);
+        recycle_index_save();
+#endif
     } else {
+#ifdef CUBELINUX
+        char rp[300]; real_path(n, rp, sizeof rp);
+        real_unlink_tree(rp);
+#endif
         unlink_node(n);
         free_tree(n);
+        RHOOK(recycle_index_save());
     }
     touch_changed();
     return 1;
@@ -242,10 +273,18 @@ int vfs_restore(VNode *n) {
     char ext[16] = "";
     if (dot && strlen(dot) < sizeof ext) { strcpy(ext, dot); base[dot - base] = 0; }
     vfs_unique_name(dir, base, ext, nm, sizeof nm);
+#ifdef CUBELINUX
+    char from[300]; real_path(n, from, sizeof from);
+#endif
     unlink_node(n);
     strcpy(n->name, nm);
     n->orig[0] = 0;
     link_child(dir, n);
+#ifdef CUBELINUX
+    char to[300]; real_path(n, to, sizeof to);
+    rename(from, to);
+    recycle_index_save();
+#endif
     touch_changed();
     return 1;
 }
@@ -257,10 +296,17 @@ int vfs_move(VNode *n, VNode *dst, const char *newname) {
     if (!vfs_valid_name(nm)) return 0;
     VNode *ex = vfs_child(dst, nm);
     if (ex && ex != n) return 0;
+#ifdef CUBELINUX
+    char from[300]; real_path(n, from, sizeof from);
+#endif
     unlink_node(n);
     strncpy(n->name, nm, sizeof n->name - 1);
     n->name[sizeof n->name - 1] = 0;
     link_child(dst, n);
+#ifdef CUBELINUX
+    char to[300]; real_path(n, to, sizeof to);
+    rename(from, to);
+#endif
     touch_changed();
     return 1;
 }
@@ -298,6 +344,9 @@ VNode *vfs_copy(VNode *n, VNode *dst, const char *newname) {
     if (!c) return NULL;
     strcpy(c->name, nm);
     link_child(dst, c);
+#ifdef CUBELINUX
+    { void real_store_tree(VNode *t); real_store_tree(c); }
+#endif
     touch_changed();
     return c;
 }
@@ -349,6 +398,10 @@ static void save_node(FILE *f, VNode *n) {
 }
 void vfs_save_now(void) {
     dirty = 0;
+#ifdef CUBELINUX
+    sync();
+    return;
+#endif
     if (!plat_storage_ok()) return;
     char p[96], tmp[96];
     snprintf(p, sizeof p, "%s/disk.cfs", plat_storage_path());
@@ -361,8 +414,17 @@ void vfs_save_now(void) {
     fclose(f);
     if (ok) { remove(p); rename(tmp, p); }
 }
+#ifdef CUBELINUX
+static void rescan(void);
+#endif
 void vfs_tick(void) {
+#ifdef CUBELINUX
+    static uint64_t last;
+    if (now_ms - last > 2000) { last = now_ms; rescan(); }
+    dirty = 0;
+#else
     if (dirty && now_ms - dirty_t > 1500) vfs_save_now();
+#endif
 }
 
 static int rd8(FILE *f) { int c = fgetc(f); return c == EOF ? -1 : c; }
@@ -440,12 +502,16 @@ static void add_shortcut(VNode *dir, int app) {
     VNode *n = node_new(nm, 0);
     n->app = app;
     link_child(dir, n);
+    RHOOK(real_write(n));
 }
 static void make_programs(void) {
     vfs_programs = vfs_child(vfs_root, "Programs");
     if (!vfs_programs) { vfs_programs = node_new("Programs", 1); link_child(vfs_root, vfs_programs); }
     for (int a = 0; a < APP_COUNT; a++) {
         if (a == APP_MSGBOX || a == APP_RUN) continue;
+#ifdef CUBELINUX
+        if (a == APP_LINUX) continue;
+#endif
         char nm[40];
         snprintf(nm, sizeof nm, "%s.exe", apps[a].cmd);
         if (vfs_child(vfs_programs, nm)) continue;
@@ -457,13 +523,17 @@ static void make_programs(void) {
 
 static VNode *ensure_dir(const char *name) {
     VNode *d = vfs_child(vfs_root, name);
-    if (!d) { d = node_new(name, 1); link_child(vfs_root, d); }
+    if (!d) { d = node_new(name, 1); link_child(vfs_root, d); RHOOK(real_mkdir(d)); }
     return d;
 }
 
 void vfs_init(void) {
     vfs_root = node_new("", 1);
     int loaded = 0;
+#ifdef CUBELINUX
+    { void real_init(int *loaded); real_init(&loaded); }
+    if (0)
+#endif
     if (plat_storage_ok()) {
         char p[96];
         snprintf(p, sizeof p, "%s/disk.cfs", plat_storage_path());
@@ -520,9 +590,16 @@ void vfs_init(void) {
         add_text(vfs_system, "motd.txt", "Welcome to the CubeXP terminal. Type 'help' to see what you can do.\n");
         add_text(vfs_system, "autorun.sh", "# Commands here run every time a terminal opens.\n");
         sample_picture(vfs_pics);
-        static const int sc[] = { APP_TERMINAL, APP_LINUX, APP_NOTEPAD, APP_PAINT, APP_SOLITAIRE, APP_BLOCKS, APP_MUSIC, APP_MINES, APP_CONTROL };
+        static const int sc[] = { APP_TERMINAL,
+#ifndef CUBELINUX
+            APP_LINUX,
+#endif
+            APP_NOTEPAD, APP_PAINT, APP_SOLITAIRE, APP_BLOCKS, APP_MUSIC, APP_MINES, APP_CONTROL };
         for (unsigned i = 0; i < sizeof sc / sizeof sc[0]; i++) add_shortcut(vfs_desktop, sc[i]);
     }
+#ifdef CUBELINUX
+    if (!loaded) { FILE *mk; char p[300]; snprintf(p, sizeof p, "%s/.config/cubexp/initialized", getenv("HOME") ? getenv("HOME") : "/home/player"); if ((mk = fopen(p, "w"))) fclose(mk); }
+#endif
     vfs_changes = 1;
     dirty = 0;
 }
@@ -562,3 +639,170 @@ uint32_t *bmp_decode(const uint8_t *d, int size, int *w, int *h) {
     *w = W; *h = H;
     return px;
 }
+
+#ifdef CUBELINUX
+/* ================= CubeLinux real-filesystem backend ================= */
+#include <dirent.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+static char home[256];
+static void real_path(VNode *n, char *buf, int len) {
+    char p[256];
+    vfs_path(n, p, sizeof p);
+    snprintf(buf, len, "%s%s", home, strcmp(p, "/") ? p : "");
+}
+static int virtual_node(VNode *n) {
+    for (; n; n = n->parent) if (n == vfs_programs) return 1;
+    return 0;
+}
+static void real_mkdir(VNode *n) {
+    if (virtual_node(n)) return;
+    char p[300];
+    real_path(n, p, sizeof p);
+    mkdir(p, 0755);
+}
+static void real_write(VNode *f) {
+    if (virtual_node(f) || f->dir) return;
+    char p[300];
+    real_path(f, p, sizeof p);
+    FILE *o = fopen(p, "wb");
+    if (!o) return;
+    if (f->app >= 0) fprintf(o, "#!app %s", apps[f->app].cmd);
+    else if (f->size) fwrite(f->data, 1, f->size, o);
+    fclose(o);
+    struct stat st;
+    if (!stat(p, &st)) f->mtime = (uint32_t)st.st_mtime;
+}
+void real_store_tree(VNode *t) {
+    if (t->dir) { real_mkdir(t); for (VNode *c = t->child; c; c = c->next) real_store_tree(c); }
+    else real_write(t);
+}
+static void real_unlink_tree(const char *path) {
+    struct stat st;
+    if (lstat(path, &st)) return;
+    if (S_ISDIR(st.st_mode)) {
+        DIR *d = opendir(path);
+        if (d) {
+            struct dirent *e;
+            while ((e = readdir(d))) {
+                if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
+                char sub[600];
+                snprintf(sub, sizeof sub, "%s/%s", path, e->d_name);
+                real_unlink_tree(sub);
+            }
+            closedir(d);
+        }
+        rmdir(path);
+    } else unlink(path);
+}
+/* Recycle Bin original locations live in "Recycle Bin/.index" (name<TAB>original path) */
+static void recycle_index_save(void) {
+    if (!vfs_recycle) return;
+    char p[300];
+    real_path(vfs_recycle, p, sizeof p);
+    strncat(p, "/.index", sizeof p - strlen(p) - 1);
+    FILE *o = fopen(p, "w");
+    if (!o) return;
+    for (VNode *c = vfs_recycle->child; c; c = c->next) fprintf(o, "%s\t%s\n", c->name, c->orig);
+    fclose(o);
+}
+static void recycle_index_load(void) {
+    if (!vfs_recycle) return;
+    char p[300], line[200];
+    real_path(vfs_recycle, p, sizeof p);
+    strncat(p, "/.index", sizeof p - strlen(p) - 1);
+    FILE *f = fopen(p, "r");
+    if (!f) return;
+    while (fgets(line, sizeof line, f)) {
+        char *tab = strchr(line, '\t');
+        if (!tab) continue;
+        *tab = 0;
+        tab[strcspn(tab + 1, "\n") + 1] = 0;
+        VNode *n = vfs_child(vfs_recycle, line);
+        if (n) snprintf(n->orig, sizeof n->orig, "%s", tab + 1);
+    }
+    fclose(f);
+}
+
+static void load_file_data(VNode *n, const char *path, struct stat *st) {
+    free(n->data); n->data = NULL; n->size = n->cap = 0; n->app = -1;
+    n->mtime = (uint32_t)st->st_mtime;
+    if (st->st_size <= 0 || st->st_size > VFS_MAX_FILE) return;
+    FILE *f = fopen(path, "rb");
+    if (!f) return;
+    n->data = malloc(st->st_size);
+    if (n->data && fread(n->data, 1, st->st_size, f) == (size_t)st->st_size) n->size = n->cap = (int)st->st_size;
+    else { free(n->data); n->data = NULL; }
+    fclose(f);
+    if (n->size > 6 && n->size < 40 && !memcmp(n->data, "#!app ", 6)) {
+        char cmd[40];
+        memcpy(cmd, n->data + 6, n->size - 6); cmd[n->size - 6] = 0;
+        cmd[strcspn(cmd, "\r\n ")] = 0;
+        n->app = app_by_cmd(cmd);
+        if (n->app >= 0) { free(n->data); n->data = NULL; n->size = n->cap = 0; }
+    }
+}
+
+/* bring dir's children in line with the real directory; returns 1 if anything changed */
+static int sync_dir(VNode *dir, const char *path, int depth) {
+    if (depth > 12) return 0;
+    int changed = 0;
+    DIR *d = opendir(path);
+    if (!d) return 0;
+    char seen[256][40];
+    int ns = 0;
+    struct dirent *e;
+    while ((e = readdir(d))) {
+        if (e->d_name[0] == '.' || strlen(e->d_name) > 38) continue;
+        char sub[600];
+        snprintf(sub, sizeof sub, "%s/%s", path, e->d_name);
+        struct stat st;
+        if (stat(sub, &st)) continue;
+        int isdir = S_ISDIR(st.st_mode);
+        if (!isdir && !S_ISREG(st.st_mode)) continue;
+        if (ns < 256) snprintf(seen[ns++], 40, "%s", e->d_name);
+        VNode *n = NULL;
+        for (VNode *c = dir->child; c; c = c->next) if (!strcmp(c->name, e->d_name)) { n = c; break; }
+        if (n && n->dir != isdir) { unlink_node(n); free_tree(n); n = NULL; }
+        if (!n) {
+            n = node_new(e->d_name, isdir);
+            if (!n) continue;
+            link_child(dir, n);
+            if (!isdir) load_file_data(n, sub, &st);
+            changed = 1;
+        } else if (!isdir && (n->mtime != (uint32_t)st.st_mtime || (n->app < 0 && n->size != st.st_size && st.st_size <= VFS_MAX_FILE))) {
+            load_file_data(n, sub, &st);
+            changed = 1;
+        }
+        if (isdir) changed |= sync_dir(n, sub, depth + 1);
+    }
+    closedir(d);
+    /* drop nodes whose files are gone */
+    VNode *c = dir->child;
+    while (c) {
+        VNode *nx = c->next;
+        int found = c == vfs_programs;
+        for (int i = 0; i < ns && !found; i++) if (!strcmp(seen[i], c->name)) found = 1;
+        if (!found && ns < 256) { unlink_node(c); free_tree(c); changed = 1; }
+        c = nx;
+    }
+    return changed;
+}
+static void rescan(void) {
+    if (sync_dir(vfs_root, home, 0)) { recycle_index_load(); vfs_changes++; }
+}
+void real_init(int *loaded) {
+    const char *h = getenv("HOME");
+    snprintf(home, sizeof home, "%s", h && *h ? h : "/home/player");
+    mkdir(home, 0755);
+    char p[300];
+    snprintf(p, sizeof p, "%s/.config", home); mkdir(p, 0755);
+    snprintf(p, sizeof p, "%s/.config/cubexp", home); mkdir(p, 0755);
+    snprintf(p, sizeof p, "%s/.config/cubexp/initialized", home);
+    *loaded = access(p, F_OK) == 0;
+    sync_dir(vfs_root, home, 0);
+    vfs_recycle = vfs_child(vfs_root, "Recycle Bin");
+    recycle_index_load();
+}
+#endif

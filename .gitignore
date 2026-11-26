@@ -5,3 +5,10 @@ build/
 tools/host/cubexp_host
 tools/host/sd/
 *.ppm
+tools/host/cubexp_host
+tools/host/cubelinux_host
+cubelinux/*/work/
+cubelinux/*/out/
+cubelinux/loader/build/
+cubelinux/loader/*.dol
+cubelinux/loader/*.elf

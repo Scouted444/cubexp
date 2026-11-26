@@ -47,7 +47,7 @@ const AppInfo apps[APP_COUNT] = {
     { "Snake", "snake", IC_SNAKE, open_snake, "Eat apples, grow long" },
     { "Clock and Calendar", "timedate", IC_CLOCK, open_clock, "Date and time" },
     { "Recycle Bin", "recycle", IC_RECYCLE, open_recycle, "Deleted files" },
-    { "About CubeXP", "winver", IC_LOGO, open_about, "" },
+    { "About " OS_NAME, "winver", IC_LOGO, open_about, "" },
     { "Help and Support", "help", IC_HELP, open_help, "" },
     { "On-Screen Keyboard", "osk", IC_KEYBOARD, open_osk, "Type with the pointer" },
     { "Run...", "run", IC_RUN, open_run, "" },
@@ -325,7 +325,11 @@ static void set_start(int open) { start_open = open; allprog_open = 0; if (open)
 
 /* All Programs, in two columns */
 static const int allprog_list[] = {
-    APP_EXPLORER, APP_TERMINAL, APP_LINUX, APP_CMD, APP_NOTEPAD, APP_PAINT, APP_CALC, APP_VIEWER, APP_MUSIC, APP_STICKY, APP_OSK, APP_CLOCK, APP_RUN,
+    APP_EXPLORER, APP_TERMINAL,
+#ifndef CUBELINUX
+    APP_LINUX,
+#endif
+    APP_CMD, APP_NOTEPAD, APP_PAINT, APP_CALC, APP_VIEWER, APP_MUSIC, APP_STICKY, APP_OSK, APP_CLOCK, APP_RUN,
     APP_SOLITAIRE, APP_MINES, APP_BLOCKS, APP_SNAKE, APP_PONG, APP_COMPUTER, APP_CONTROL, APP_TASKMGR, APP_RECYCLE, APP_HELP, APP_ABOUT,
 };
 #define NALLPROG ((int)(sizeof allprog_list / sizeof allprog_list[0]))
@@ -351,7 +355,7 @@ static void build_start(void) {
         { "Control Panel", NULL, IC_CONTROL, APP_CONTROL, 0 }, { "Task Manager", NULL, IC_TASKMGR, APP_TASKMGR, 0 },
         { "Sticky Notes", NULL, IC_STICKY, APP_STICKY, 0 }, { "On-Screen Keyboard", NULL, IC_KEYBOARD, APP_OSK, 0 },
         { NULL, NULL, 0, 0, 0 },
-        { "Help and Support", NULL, IC_HELP, APP_HELP, 0 }, { "About CubeXP", NULL, IC_LOGO, APP_ABOUT, 0 }, { "Run...", NULL, IC_RUN, APP_RUN, 0 },
+        { "Help and Support", NULL, IC_HELP, APP_HELP, 0 }, { "About " OS_NAME, NULL, IC_LOGO, APP_ABOUT, 0 }, { "Run...", NULL, IC_RUN, APP_RUN, 0 },
     };
     for (unsigned i = 0; i < sizeof right / sizeof right[0]; i++) {
         if (!right[i].label) { y += 9; continue; }
@@ -763,7 +767,7 @@ static void draw_dialog(void) {
     grayscale_screen(amt);
     int x = (SW - DLG_W) / 2, y = (SH - DLG_H) / 2;
     fill(x, y, DLG_W, 44, 0x0A2A8C);
-    text(&font_big, x + 12, y + 12, dlg == 1 ? "Turn off computer" : "Log Off CubeXP", 0xFFFFFF);
+    text(&font_big, x + 12, y + 12, dlg == 1 ? "Turn off computer" : "Log Off " OS_NAME, 0xFFFFFF);
     draw_icon(IC_LOGO, x + DLG_W - 44, y + 6, 32);
     grad_h(x, y + 44, DLG_W, 2, 0x4A6AD0, 0xF0F0FF);
     grad_v(x, y + 46, DLG_W, DLG_H - 90, 0x5A7EDC, 0x3A60D0);
@@ -789,7 +793,7 @@ static void begin_transition(const char *msg, int next, int snd) {
     if (snd >= 0) sound_play(snd);
 }
 void shell_restart(void) { settings_save(); vfs_save_now(); wm_close_all(); begin_transition("Restarting...", ST_BOOT, SND_SHUTDOWN); }
-void shell_turn_off(void) { settings_save(); vfs_save_now(); wm_close_all(); begin_transition("CubeXP is shutting down...", ST_OFF, SND_SHUTDOWN); }
+void shell_turn_off(void) { settings_save(); vfs_save_now(); wm_close_all(); begin_transition(OS_NAME " is shutting down...", ST_OFF, SND_SHUTDOWN); }
 void shell_log_off(void) { settings_save(); vfs_save_now(); wm_close_all(); begin_transition("Logging off...", ST_LOGIN, SND_SHUTDOWN); }
 
 static void dialog_click(int mx, int my) {
@@ -811,7 +815,7 @@ static void dialog_click(int mx, int my) {
 static void draw_boot(void) {
     fill(0, 0, SW, SH, 0);
     draw_icon(IC_LOGO, 196, 150, 64);
-    text(&font_huge, 272, 160, "CubeXP", 0xFFFFFF);
+    text(&font_huge, 272, 160, OS_NAME, 0xFFFFFF);
     text(&font_bold, 400, 152, OS_EDITION, 0xF59A23);
     text(&font_ui, 274, 204, "GameCube Edition", 0xA0A0A0);
     int bx = 250, by = 300;
@@ -849,9 +853,9 @@ static void user_tile_rect(int i, int *x, int *y) { *x = SW / 2 + 30; *y = 150 +
 
 static void draw_login(void) {
     login_bg();
-    int lw = text_w(&font_huge, "CubeXP");
+    int lw = text_w(&font_huge, OS_NAME);
     draw_icon(IC_LOGO, 296 - lw / 2 - 32, 160, 64);
-    text_shadow(&font_huge, 296 - lw, 232, "CubeXP", 0xFFFFFF);
+    text_shadow(&font_huge, 296 - lw, 232, OS_NAME, 0xFFFFFF);
     text(&font_ui, 296 - text_w(&font_ui, "To begin, click your user name"), 290, "To begin, click your user name", 0xFFFFFF);
     login_users[0] = cfg.user;
     for (int i = 0; i < 2; i++) {
@@ -866,7 +870,7 @@ static void draw_login(void) {
     int px = 20, py = SH - 50;
     int hot = inside(mouse_x, mouse_y, px, py, 190, 30);
     draw_icon(IC_POWER, px, py, 28);
-    text(&font_bold, px + 36, py + 8, "Turn off CubeXP", hot ? 0xFFF080 : 0xFFFFFF);
+    text(&font_bold, px + 36, py + 8, "Turn off " OS_NAME, hot ? 0xFFF080 : 0xFFFFFF);
     text(&font_ui, SW - 300, SH - 52, "After you log on, press START for the menu", 0xFFFFFF);
     text(&font_ui, SW - 300, SH - 36, "and X for the on-screen keyboard.", 0xFFFFFF);
 }
@@ -882,7 +886,7 @@ static void login_click(int mx, int my) {
             return;
         }
     }
-    if (inside(mx, my, 20, SH - 50, 190, 30)) begin_transition("CubeXP is shutting down...", ST_OFF, SND_SHUTDOWN);
+    if (inside(mx, my, 20, SH - 50, 190, 30)) begin_transition(OS_NAME " is shutting down...", ST_OFF, SND_SHUTDOWN);
 }
 
 static void draw_welcome(void) {
@@ -904,7 +908,9 @@ static void draw_off(void) {
     fill(0, 0, SW, SH, 0);
     text_center(&font_big, 0, 200, SW, "It's now safe to turn off", 0xF59A23);
     text_center(&font_big, 0, 230, SW, "your GameCube.", 0xF59A23);
+#ifndef CUBELINUX
     text_center(&font_ui, 0, 330, SW, "Press START to restart CubeXP    -    Press Z to exit to the loader", 0x808080);
+#endif
 }
 
 /* ---------------- screensaver ---------------- */
@@ -927,7 +933,7 @@ static void draw_saver(void) {
     if (sv_x < 0 || sv_x > SW - 200) sv_dx = -sv_dx;
     if (sv_y < 0 || sv_y > SH - 80) sv_dy = -sv_dy;
     draw_icon(IC_LOGO, (int)sv_x, (int)sv_y, 64);
-    text(&font_huge, (int)sv_x + 70, (int)sv_y + 12, "CubeXP", 0xFFFFFF);
+    text(&font_huge, (int)sv_x + 70, (int)sv_y + 12, OS_NAME, 0xFFFFFF);
 }
 
 /* ---------------- input ---------------- */
@@ -1093,9 +1099,13 @@ static void enter_desktop(void) {
     sound_play(SND_STARTUP);
     sticky_restore_all();
     char m[160];
+#ifdef CUBELINUX
+    snprintf(m, sizeof m, "Hi %s! This is real Linux. Open the Terminal\nfor a shell. START = menu, X = keyboard.", cfg.user);
+#else
     snprintf(m, sizeof m, "Hi %s! Press START for the menu,\nX for the keyboard, Z to switch windows.", cfg.user);
+#endif
     bal_until = 0;
-    notify("Welcome to CubeXP", m);
+    notify("Welcome to " OS_NAME, m);
 }
 
 static int shell_busy(void) {
@@ -1129,11 +1139,17 @@ static void shell_frame_inner(void) {
         draw_transition();
         if (now_ms - state_t > 2600) {
             state = trans_next; state_t = now_ms;
+#ifdef CUBELINUX
+            if (state == ST_BOOT) plat_reboot();
+#endif
             if (state == ST_LOGIN) strcpy(cfg.user, "Player"), settings_load();
         }
         return;
     case ST_OFF:
         draw_off();
+#ifdef CUBELINUX
+        if (now_ms - state_t > 600) { plat_present(); plat_exit(); }
+#endif
         if (p.down & B_START) { state = ST_BOOT; state_t = now_ms; }
         if (p.down & B_Z) plat_exit();
         return;
@@ -1226,5 +1242,8 @@ void shell_debug_warp(int x, int y) { fx = x; fy = y; mouse_x = x; mouse_y = y; 
 
 void shell_init(void) {
     state = ST_BOOT; state_t = plat_ms();
+#ifdef CUBELINUX
+    state = ST_LOGIN;
+#endif
     last_input = state_t;
 }

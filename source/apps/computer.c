@@ -53,7 +53,7 @@ static void mc_draw(Window *w, int x, int y, int cw, int ch) {
         (void)used;
         static char sub0[48];
         snprintf(sub0, sizeof sub0, "%ld KB used of 8 MB", vfs_total_size(vfs_root) / 1024);
-        dr[0].icon = IC_DRIVE; dr[0].name = "Local Disk (C:)"; dr[0].pct = (int)(vfs_total_size(vfs_root) * 100 / (8 * 1024 * 1024)) + 1; dr[0].sub = sub0;
+        dr[0].icon = IC_DRIVE; dr[0].name = DRIVE_NAME; dr[0].pct = (int)(vfs_total_size(vfs_root) * 100 / (8 * 1024 * 1024)) + 1; dr[0].sub = sub0;
         dr[1].icon = IC_SDCARD; dr[1].name = plat_storage_ok() ? "SD Card (D:)" : "SD Card (D:) - none"; dr[1].pct = -1; dr[1].sub = plat_storage_ok() ? "Saving C: to /cubexp" : "Nothing is saved at power off";
         dr[2].icon = IC_DISC; dr[2].name = "DVD Drive (E:)"; dr[2].pct = -1; dr[2].sub = "Mini disc drive";
         for (int i = 0; i < 3; i++) {

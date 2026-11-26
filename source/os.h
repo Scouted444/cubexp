@@ -6,7 +6,13 @@
 #include "platform.h"
 #include "vfs.h"
 
+#ifdef CUBELINUX
+#define OS_NAME    "CubeLinux"
+#define DRIVE_NAME "Home (/home/player)"
+#else
 #define OS_NAME    "CubeXP"
+#define DRIVE_NAME "Local Disk (C:)"
+#endif
 #define OS_EDITION "Professional"
 #define OS_VERSION "Version 1.1 (Build 2700)"
 

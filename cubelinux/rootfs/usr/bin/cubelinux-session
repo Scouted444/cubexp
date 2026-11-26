@@ -1,0 +1,10 @@
+#!/bin/sh
+# Session on tty1: the CubeXP desktop, or a plain shell when booted with "cubelinux.text"
+export PATH=/usr/bin:/bin:/usr/sbin:/sbin HOME=/home/player USER=player TERM=linux SHELL=/bin/sh
+cd "$HOME"
+if grep -q cubelinux.text /proc/cmdline || [ ! -c /dev/fb0 ]; then
+  [ -c /dev/fb0 ] || echo "No framebuffer found - starting a text shell."
+  cat /etc/motd
+  exec /bin/sh -l
+fi
+exec /usr/bin/cubede

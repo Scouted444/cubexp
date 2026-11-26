@@ -53,6 +53,12 @@ jobs:
           test -f cubelinux/loader/cubelinux.dol
           $DEVKITPPC/bin/powerpc-eabi-nm cubelinux/loader/cubelinux.elf | grep -qE " [RrDd] kernel_bin_end$"
           ls -l cubelinux/loader/cubelinux.dol
+          # memory layout: the hand-over routine must live below the kernel's load address
+          $DEVKITPPC/bin/powerpc-eabi-readelf -lW kout/dtbImage.gamecube | grep -E "Entry|LOAD"
+          $DEVKITPPC/bin/powerpc-eabi-readelf -lW cubelinux/loader/cubelinux.elf | grep LOAD
+          J=$($DEVKITPPC/bin/powerpc-eabi-nm cubelinux/loader/cubelinux.elf | awk '/ cl_copy_and_jump$/{print $1}')
+          echo "cl_copy_and_jump at $J"
+          test $((0x$J & 0x0fffffff)) -lt $((0x600000))
           cp cubelinux/loader/cubelinux.dol .
 
       - uses: actions/upload-artifact@v4

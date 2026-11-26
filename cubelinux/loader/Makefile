@@ -28,7 +28,8 @@ CFILES   := main.c gfx.c icons.c font_data.c
 BINFILES := kernel.bin
 
 export LD := $(CC)
-export OFILES := $(addsuffix .o,$(BINFILES)) $(CFILES:.c=.o)
+SFILES   := jump.S
+export OFILES := $(addsuffix .o,$(BINFILES)) $(CFILES:.c=.o) $(SFILES:.S=.o)
 export INCLUDE := -I$(CURDIR)/$(SHARED) -I$(CURDIR)/$(BUILD) -I$(LIBOGC_INC)
 export LIBPATHS := -L$(LIBOGC_LIB)
 

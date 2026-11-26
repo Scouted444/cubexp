@@ -176,7 +176,9 @@ int main(void) {
 
     Ehdr *e = (Ehdr *)img;
     Phdr *ph = (Phdr *)(img + e->phoff);
-    /* refuse to overwrite ourselves: everything the copy touches must be above our bss/stack */
+    /* the kernel goes to its link address (0x00600000), which the loader itself may be
+       sitting on. Build the final image in free memory just below the TV picture, then a
+       register-only routine copies it into place and jumps. */
     uint32_t lo = 0xFFFFFFFF, hi = 0;
     for (int i = 0; i < e->phnum; i++) {
         if (ph[i].type != 1 || !ph[i].memsz) continue;
@@ -184,33 +186,36 @@ int main(void) {
         if (a < lo) lo = a;
         if (a + ph[i].memsz > hi) hi = a + ph[i].memsz;
     }
+    if (hi <= lo) for (;;) draw_status("The kernel has nothing to load.", -1, 1);
+    uint32_t len = (hi - lo + 31) & ~31u;
+    uint32_t stage = ((0x80000000u | XFB_PHYS) - len) & ~31u;
     uint32_t sp;
     __asm__ volatile("mr %0, 1" : "=r"(sp));
-    uint32_t ours = (uint32_t)(uintptr_t)SYS_GetArenaLo();
-    if (sp > ours) ours = sp + 0x1000;
-    if (lo < ours && hi > 0x80003000u) {
-        char m[120];
-        snprintf(m, sizeof m, "The kernel (%08lx-%08lx) overlaps the loader (ends %08lx).", (unsigned long)lo, (unsigned long)hi, (unsigned long)ours);
+    uint32_t used = (uint32_t)(uintptr_t)SYS_GetArenaLo();
+    if (sp + 0x1000 > used) used = sp + 0x1000;
+    if ((uint32_t)(uintptr_t)kernel_bin_end > used) used = (uint32_t)(uintptr_t)kernel_bin_end;
+    if (stage < used || stage < hi || lo < 0x80004000u) {
+        char m[140];
+        snprintf(m, sizeof m, "Not enough memory: kernel %08lx-%08lx, loader up to %08lx.", (unsigned long)lo, (unsigned long)hi, (unsigned long)used);
         for (;;) draw_status(m, -1, 1);
     }
 
     draw_status("Starting Linux...", 30, 0);
+    uint8_t *st = (uint8_t *)stage;
+    memset(st, 0, len);
     for (int i = 0; i < e->phnum; i++) {
         if (ph[i].type != 1 || !ph[i].memsz) continue;
-        uint8_t *dst = (uint8_t *)(0x80000000u | ph[i].paddr);
-        memmove(dst, img + ph[i].offset, ph[i].filesz);
-        memset(dst + ph[i].filesz, 0, ph[i].memsz - ph[i].filesz);
-        DCFlushRange(dst, ph[i].memsz);
-        ICInvalidateRange(dst, ph[i].memsz);
+        memcpy(st + ((0x80000000u | ph[i].paddr) - lo), img + ph[i].offset, ph[i].filesz);
     }
+    DCFlushRange(st, len);
     draw_status("Starting Linux...", 100, 0);
 
     /* hand over: no more interrupts, VI keeps scanning our picture, SI keeps polling pads */
+    extern void cl_copy_and_jump(uint32_t dst, uint32_t src, uint32_t n, uint32_t entry) __attribute__((noreturn));
     u32 level;
     _CPU_ISR_Disable(level);
     (void)level;
     *(volatile uint32_t *)0xCC003004 = 0;   /* PI interrupt mask: nothing */
-    void (*entry)(void) = (void (*)(void))(0x80000000u | e->entry);
-    entry();
+    cl_copy_and_jump(lo, stage, len, 0x80000000u | e->entry);
     for (;;) ;
 }

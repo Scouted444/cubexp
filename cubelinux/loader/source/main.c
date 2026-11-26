@@ -119,6 +119,7 @@ static void draw_menu(int sel, int secs, uint32_t ksize) {
     snprintf(b, sizeof b, "Kernel image: %lu KB   -   Video: %s", (unsigned long)(ksize >> 10),
              rmode == &TVEurgb60Hz480IntDf ? "PAL 60 Hz 480i" : rmode->viTVMode & VI_NON_INTERLACE ? "480p" : "NTSC 480i");
     text(&font_small, 48, SH - 40, b, 0x6A7EA8);
+    text(&font_small, 48, SH - 54, "Dolphin users: Config > Advanced > Enable MMU must be ON, or Linux stops with \"Invalid write\".", 0xE0C070);
     text(&font_small, 48, SH - 26, "Linux is licensed under the GPL v2. BusyBox is GPL v2. The desktop is CubeXP.", 0x6A7EA8);
 }
 

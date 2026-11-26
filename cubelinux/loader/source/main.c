@@ -7,6 +7,7 @@
  */
 #include <gccore.h>
 #include <ogc/machine/processor.h>
+#include <ogc/lwp_watchdog.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
